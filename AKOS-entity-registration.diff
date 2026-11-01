@@ -1,0 +1,37 @@
+# AKOS entity registration: D8 (31 Oct 2026). Apply to the AKOS skill's references/ by hand (3 small edits).
+# Generated on scratch copies of the AKOS references, comparing with line endings ignored. The real AKOS file may differ elsewhere: apply the changed lines, not the whole file.
+# Also change the remaining sentence 'applies across all nine entities' in the taxonomy file to 'all eleven entities' (the registration tool does not touch it).
+--- references/knowledge-graph-schema.md
++++ references/knowledge-graph-schema.md
+@@ -87,7 +87,7 @@
+       "id": "string (stable, e.g. DOC-MKAPL-0142)",
+       "type": "Document|Folder|Entity|Division|Company|Department|Process|SubProcess|Risk|Control|Policy|Procedure|Regulation|Audit|Issue|Recommendation|Project|Plant|Country|System|Database|Vendor|Customer|Employee|Role|Committee|Meeting|Decision|Evidence",
+       "label": "string",
+-      "entity": "string (MKAPL-JD|MKAPL-ST|MKAPL-DC|MKSDL|NMSB|MABI|MKPC|Fleet Parade|SAPL|Group)",
++      "entity": "string (MKAPL-JD|MKAPL-ST|MKAPL-DC|MKSDL|NMSB|MABI|MKPC|Fleet Parade|SAPL|Perfect Healthcare|Perfect Longevity|Group)",
+       "created_date": "ISO-8601 date",
+       "confidence": "100%|High|Medium|Low",
+       "source_location": "string (original file path)"
+--- references/taxonomy-and-metadata-standards.md
++++ references/taxonomy-and-metadata-standards.md
+@@ -19,7 +19,7 @@
+ 
+ ## 1. Entity Code Standard
+ 
+-MKTRON Group's nine entities, with their standard codes (use these exactly — don't
++MKTRON Group's eleven entities, with their standard codes (use these exactly — don't
+ invent variants):
+ 
+ | Code | Entity | Country | Sector |
+@@ -31,8 +31,10 @@
+ | NMSB | (Malaysia dialysis healthcare entity) | Malaysia | Healthcare |
+ | MABI | — | — | — |
+ | MKPC | MK Tron Precision/Perodua-Denso supplier | Malaysia | Manufacturing |
+-| Fleet Parade | — | — | — |
++| Fleet Parade | Fleet Parade (Proton car dealership) | Malaysia | Automotive retail |
+ | SAPL | — | — | — |
++| Perfect Healthcare | Perfect Healthcare | Malaysia | Healthcare |
++| Perfect Longevity | Perfect Longevity Sdn Bhd | Malaysia | Healthcare |
+ 
+ For MKAPL entities operating from both Chennai (Tamil Nadu) and Pune (Maharashtra),
+ tag both the entity code *and* the state, since statutory frameworks diverge by

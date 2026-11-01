@@ -1,0 +1,197 @@
+old_name,old_location,new_plugin,new_skill,disposition,note
+fraud-analytics-engine,upload:fraud-analytics-engine,gia-fraud,gia-fraud-analytics,REDIRECT,Loose copy: duplicate minus evals (fraud MIGRATION)
+investigation,upload:skills,gia-fraud,gia-fraud-investigation,MERGED,GCAE investigation stub; AG-008 content only
+fraud-analytics-engine,upload:fraud-analytics-plugin,gia-fraud,gia-fraud-analytics,MERGED,"Plugin copy: scripts, evals, references ported"
+rbia-frm-mastermind,upload:rbia-frm-mastermind,gia-fraud,gia-fraud-rbia-frm,MERGED,v2.2.0 PORTED; enforcement gate opt-in
+rbia-frm-mastermind,upload:rbia-frm-mastermind,gia-fraud,gia-fraud-rbia-frm,REDIRECT,Loose copy with broken refs
+cae-fraud-watch,plugin:ai-cae-mktron,gia-fraud,gia-fraud-entity-watch,MERGED,Method only; case facts removed
+gia-business-performance-analytics,plugin:gia-command-plugin,gia-analytics,gia-performance-analytics,MERGED,"3-sigma alarm, 2-sigma warning ported"
+mfg-cost-accounting-financial-analysis,plugin:gia-command-plugin,gia-analytics,gia-cost-accounting,MERGED,Variance sign fixed
+cae-fraud-investigation,plugin:mktron-composed-layers,gia-fraud,gia-fraud-investigation,REDIRECT,Byte-identical duplicate of mktron-hybrid copy
+cae-fraud-investigation,plugin:mktron-hybrid,gia-fraud,gia-fraud-investigation,MERGED,"Split: also gia-fraud-risk-governance, gia-fraud-fsf-window-dressing, gia-analytics test-library"
+group-cae-fraud-v2,user skill,gia-fraud,gia-fraud-investigation,REDIRECT,Name line and banner differ only
+group-cae-fraud,user skill,gia-fraud,gia-fraud-investigation,MERGED,"Merged into investigation and risk-governance, then retire; repoint inbound references first"
+mktron-gia-data-reconciliation,user skill,gia-analytics,gia-data-reconciliation,MERGED,"Fixtures, tests, alias-aware codes"
+payroll-ot-claims-audit,user skill,gia-analytics,gia-payroll-analytics,MERGED,"Parts C5, G, H only; remainder to gia-audit HR and payroll pack"
+two-way-trade-pricing-recovery-audit,user skill,gia-analytics,gia-recovery-analysis,MERGED,"Model, workbook builder, worked example"
+audit,upload:skills,gia-core,gcgo-router,RETIRED,planner-mapped 30-Oct (generic upload stub); port verified QA-R2; dispositions in gia-core/MIGRATION.md by QA
+cae-24m-plan-manager,plugin:ai-cae-mktron,gia-audit,gia-engagement-planning,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-audit/MIGRATION.md by QA
+cae-entity-intel,plugin:ai-cae-mktron,gia-audit,gia-engagement-planning,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-audit/MIGRATION.md by QA
+cae-methodology,plugin:ai-cae-mktron,gia-audit,gia-audit-lifecycle,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-audit/MIGRATION.md by QA
+cae-audit-workbench,plugin:cae-cowork-audit-workbench,gia-audit,gia-fieldwork-workpapers,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-audit/MIGRATION.md by QA
+cae-field-auditor,plugin:cae-field-auditor,gia-audit,gia-fieldwork-workpapers,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-audit/MIGRATION.md by QA
+cae-fieldwork-engine,plugin:cae-fieldwork-engine,gia-audit,gia-fieldwork-workpapers,MERGED,"Matched by description: gia-audit row ""fieldwork HTML (T-001..T-015)"""
+puducherry-india-ops-audit,plugin:gia-governance-suite,gia-audit,gia-pack-india,MERGED,Matched by description: India state skills row (Puducherry)
+cae-control-testing,plugin:mktron-composed-layers,gia-audit,gia-racm-icfr-testing,MERGED,"Matched by description: ""RACM, ICFR and ToE skills"" row"
+cae-fieldwork-engine,plugin:mktron-composed-layers,gia-audit,gia-fieldwork-workpapers,MERGED,"Matched by description: ""fieldwork HTML"" row"
+cae-framework-reference,plugin:mktron-composed-layers,gia-audit,gia-racm-icfr-testing,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-audit/MIGRATION.md by QA; GIAS parts to gias-navigator
+cae-control-testing,plugin:mktron-hybrid,gia-audit,gia-racm-icfr-testing,MERGED,"Matched by description: ""RACM, ICFR and ToE skills"" row"
+cae-fieldwork-engine,plugin:mktron-hybrid,gia-audit,gia-fieldwork-workpapers,MERGED,"Matched by description: ""fieldwork HTML"" row"
+cae-framework-reference,plugin:mktron-hybrid,gia-audit,gia-racm-icfr-testing,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-audit/MIGRATION.md by QA; GIAS parts to gias-navigator
+pune-india-ops-audit,plugin:mktron-pune-vda-compliance,gia-audit,gia-pack-india,MERGED,Matched by description: India state skills row (Maharashtra)
+chennai-hr-audit,user skill,gia-audit,gia-pack-india,MERGED,"Matched by description: India state skills row (Tamil Nadu), HR"
+chennai-india-ops-audit,user skill,gia-audit,gia-pack-india,MERGED,Matched by description: India state skills row (Tamil Nadu)
+dialysis-finance-risk-audit-chief,user skill,gia-audit,gia-pack-malaysia,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-audit/MIGRATION.md by QA
+dialysis-operations-chief,user skill,gia-audit,gia-pack-malaysia,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-audit/MIGRATION.md by QA
+gias-standards-navigator,user skill,gia-audit,gias-navigator,MERGED,"Named by description: ""standards navigator"" row"
+grc-engagement-charter,user skill,gia-audit,gia-engagement-planning,MERGED,"Matched by description: ""engagement planning and prioritisation"" row"
+in-manufacturing-audit,user skill,gia-audit,gia-pack-india,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-audit/MIGRATION.md by QA
+mac-audit-constitution-l99,user skill,gia-core,iron-rules,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-core/MIGRATION.md by QA
+master-audit-superagent,user skill,gia-audit,gia-audit-lifecycle,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-audit/MIGRATION.md by QA
+mx-manufacturing-audit,user skill,gia-audit,gia-pack-mexico,MERGED,"Matched by description: ""Mexico manufacturing and HR"" row"
+my-erawan-lmw-audit,user skill,gia-audit,gia-pack-malaysia,MERGED,"Matched by description: ""Malaysia mfg, LMW, clinic, dialysis, HR"" row"
+my-hc-dialysis-audit,user skill,gia-audit,gia-pack-malaysia,MERGED,Matched by description: Malaysia dialysis row
+my-healthcare-clinical-dialysis-audit,user skill,gia-audit,gia-pack-malaysia,MERGED,Matched by description: Malaysia dialysis row
+my-malaysia-hr-audit,user skill,gia-audit,gia-pack-malaysia,MERGED,Matched by description: Malaysia HR row
+my-mfg-diecast-stamping-audit,user skill,gia-audit,gia-pack-malaysia,MERGED,Matched by description: Malaysia mfg row
+my-mkpc-mfg-audit,user skill,gia-audit,gia-pack-malaysia,MERGED,Matched by description: Malaysia mfg row
+my-phc-clinic-audit,user skill,gia-audit,gia-pack-malaysia,MERGED,Matched by description: Malaysia clinic row
+puducherry-india-ops-audit,user skill,gia-audit,gia-pack-india,MERGED,Matched by description: India state skills row (Puducherry)
+pune-hr-audit,user skill,gia-audit,gia-pack-india,MERGED,"Matched by description: India state skills row (Maharashtra), HR"
+pune-india-ops-audit,user skill,gia-audit,gia-pack-india,MERGED,Matched by description: India state skills row (Maharashtra)
+pune-vda-tracker,user skill,gia-audit,gia-pack-india,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-audit/MIGRATION.md by QA; tracker to /gia-plant-readiness-tracker command
+super-grc-audit-plugin-l99,user skill,gia-audit,gia-audit-lifecycle,MERGED,"Matched by description: ""super-grc lifecycle"" row"
+board-assurance,upload:skills,gia-core,runtime-guard,RETIRED,"GCAE v14.5 stub; DROPPED in gia-report-qa, GCAE disposition owned by gia-core"
+cae-board-reporting,plugin:ai-cae-mktron,gia-report-qa,gia-board-brief,MERGED,"Escalation thresholds, AC pack"
+action-closure-validation,plugin:gia-assurance-value-chain,gia-report-qa,gia-evidence-trace,MERGED,"Section 6 (7 statuses, R19)"
+evidence-trace-register,plugin:gia-assurance-value-chain,gia-report-qa,gia-evidence-trace,MERGED,"4 scripts, 121-check selftest"
+executive-decision-brief,plugin:gia-assurance-value-chain,gia-report-qa,gia-board-brief,MERGED,"Mode C/D, brief_data.py, jargon_scan.py"
+workpaper-finding-sheet,plugin:gia-assurance-value-chain,gia-report-qa,gia-evidence-trace,MERGED,"Sections 4-5, 11-element workpaper"
+gia-evidence-discipline,plugin:gia-governance-suite,gia-report-qa,gia-report-qa,MERGED,Mode 8 -> scripts/qa_scan.py; other modes MOVED to gia-core
+gia-statutory-freshness,plugin:gia-governance-suite,gia-audit,statutory-register,MERGED,MOVED: dated register and check_rates.py
+mktron-presentation,plugin:mktron-presentation-intelligence,gia-report-qa,gia-presentation,MERGED,Split; runtime and UAT sections DROPPED
+audit-engagement-relations,user skill,gia-audit,gia-engagement-planning,MERGED,MOVED: kickoff and closing templates (skill name not given in MIGRATION)
+board-chairman-briefing,user skill,gia-report-qa,gia-board-brief,MERGED,"Mode A/B, ID rules, 5 references"
+cae-report-conversion,user skill,gia-report-qa,gia-ia-report,MERGED,Legacy reference only (13-section conversion)
+cae-verification-discipline,user skill,gia-report-qa,gia-report-qa,MERGED,"Four-Lane test, devil's advocate"
+gcae-assurance-qa-release,user skill,gia-core,runtime-guard,RETIRED,DROPPED in gia-report-qa; GCAE disposition owned by gia-core
+gia-lean-comms,user skill,gia-core,safeguard-lint,MERGED,"MOVED: zone and meaning-guard idea; target skill not named in MIGRATION, confirm"
+group-cae-external-reporting,user skill,gia-report-qa,gia-external-release,MERGED,"Zero-artefact output, voice table, 5 templates"
+group-cae-reporting,user skill,gia-report-qa,gia-ia-report,MERGED,"Audience map, Stage 1-3 co-drafting, templates"
+independent-critique,user skill,gia-report-qa,gia-report-qa,MERGED,"Mode A script, Mode B standard"
+internal-comms,user skill,gia-report-qa,gia-external-release,RETIRED,"DROPPED as obsolete generic formats; no direct successor, nearest shown"
+mktron-consolidated-iar,user skill,gia-report-qa,gia-ia-report,MERGED,"Baseline lock, edited-draft diff, banned phrases"
+plain-language-audit-report-excel-referenced,user skill,gia-report-qa,gia-ia-report,MERGED,"Profile A, finding blocks, Excel WP spec"
+strategic-reporting-framework,user skill,gia-report-qa,gia-disclosure-calibration,MERGED,"L1-L3, 7-question test, tieout_check.py"
+gcae,upload:SKILL.md,gia-core,runtime-guard,MERGED,GCAE 14.5 master
+gcae-enterprise-assurance-risk,upload:history,gia-core,runtime-guard,RETIRED,GCAE v13 quarantine; superseded duplicate
+communication,upload:skills,gia-core,runtime-guard,MERGED,"Communication-only exclusivity kept in runtime/router.py (core MIGRATION row ""other suite"")"
+gcae,upload:skills,gia-core,runtime-guard,MERGED,GCAE 14.5 skill
+plugin-admin,upload:skills,gia-core,runtime-guard,MERGED,GCAE 14.5 plugin-admin
+research,upload:skills,gia-audit,gia-audit-lifecycle,MERGED,"Routed per gia-core row ""research"": gia-audit (skill not named)"
+restart,upload:skills,gia-core,restart,MERGED,Command /restart
+risk,upload:skills,gia-report-qa,gia-report-qa,MERGED,"Routed per gia-core row ""risk"": gia-report-qa (skill not named)"
+scope,upload:skills,gia-core,scope,MERGED,Command /scope
+status,upload:skills,gia-core,status,MERGED,Command /status
+ai-cae-orchestrator,plugin:ai-cae-mktron,gia-core,iron-rules,MERGED,Human gates only (references/human-gates.md); other routing RETIRED
+cae-data-guardian,plugin:ai-cae-mktron,gia-core,project-memory,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-core/MIGRATION.md by QA
+akos-enterprise-orchestrator,plugin:akos-enterprise-orchestrator,gia-core,project-memory,MERGED,"Matched by description: ""akos plugin skill"" row"
+akos-graphify-bridge,plugin:akos-graph,gia-core,project-memory,MERGED,"scripts, config/entities.json, references"
+cae-command-centre,plugin:cae-command-centre,gia-core,project-memory,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-core/MIGRATION.md by QA
+cae-rag-document-intelligence,plugin:cae-rag-document-intelligence,gia-core,project-memory,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-core/MIGRATION.md by QA
+gcae-enterprise-assurance-risk,plugin:gcae-assurance,gia-core,safeguard-lint,MERGED,gcae-assurance hooks (GR-16 to GR-19) and lint
+assurance-orchestrator,plugin:gia-assurance-value-chain,gia-report-qa,gia-report-qa,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-report-qa/MIGRATION.md by QA
+gia-fleet-roster,plugin:gia-command-plugin,gia-core,gcgo-router,MERGED,references/fleet-and-roster.md
+gia-file-catalog,plugin:gia-file-catalog,gia-core,project-memory,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-core/MIGRATION.md by QA
+gcgo-orchestrator,plugin:gia-governance-suite,gia-core,gcgo-router,MERGED,"Registry, gcgo_route.py"
+fleet-orchestrator,plugin:grc-agentic-fleet,gia-core,gcgo-router,MERGED,Agents live in agents/
+iron-rules-governance,plugin:iron-rules-governance-old,gia-core,iron-rules,RETIRED,Iron-rules 25-rule copy; no unique content
+cae-persona,plugin:mktron-composed-layers,gia-core,gcgo-router,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-core/MIGRATION.md by QA
+cae-master-router,plugin:mktron-hybrid,gia-core,gcgo-router,MERGED,"""say so when more than one layer applies"" rule"
+cae-persona,plugin:mktron-hybrid,gia-core,gcgo-router,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-core/MIGRATION.md by QA
+akos-enterprise-orchestrator-2,user skill,gia-core,project-memory,MERGED,"Registers, session start, intake, protocols"
+algorithmic-art,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+artifact-emulator,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+brand-guidelines,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+built-in-browser,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+cae-cowork-ai-plugin,user skill,gia-core,gcgo-router,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-core/MIGRATION.md by QA
+canvas-design,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+charlie-hills-code,user skill,gia-core,iron-rules,MERGED,"Plan, Verify, Execute, Check, Log in references/charlie-hills.md"
+chrome-browser,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+computer-use,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+debugger,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+deep-research,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+doc-coauthoring,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+docs,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+docx,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+epm-knowledge-graph,user skill,gia-core,project-memory,MERGED,"kg_tools.py, kg-schema.md"
+gia-file-catalog-2,user skill,gia-core,project-memory,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-core/MIGRATION.md by QA
+google-workspace,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+group-cae-core,user skill,gia-core,gcgo-router,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-core/MIGRATION.md by QA
+group-cae-second-brain,user skill,gia-core,project-memory,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-core/MIGRATION.md by QA
+group-cae,user skill,gia-core,gcgo-router,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-core/MIGRATION.md by QA
+import-memory,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+iron-rules-governance,user skill,gia-core,iron-rules,MERGED,"Canonical source; rules.json, rendered rules.md, 12-item gate"
+mcp-builder,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+mktron-grc-function,user skill,gia-core,gcgo-router,MERGED,planner-mapped 30-Oct; port verified QA-R2; dispositions in gia-core/MIGRATION.md by QA
+morning,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+pdf,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+pptx,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+self-learning-loop,user skill,gia-core,self-learning,MERGED,"log_lesson.py, seed lessons"
+skill-creator,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+skill-factory,user skill,gia-core,skill-hygiene,MERGED,"run_preflight.py, bundled skill_lint.py"
+skill-sprawl-watch,user skill,gia-core,skill-hygiene,MERGED,"scan_overlap.py, baseline references"
+slack-gif-creator,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+theme-factory,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+ui-ux-pro-max,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+web-artifacts-builder,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+xlsx,user skill,,,KEEP-OUT-OF-SCOPE,"not GIA, keep installed; no stub"
+gcgo,command (gia-governance-suite),gia-core,command /gcgo,MERGED,gcgo-router
+gcgo-status,command (gia-governance-suite),gia-core,command /gcgo-status,MERGED,
+gcgo-health,command (gia-governance-suite),gia-core,command /gcgo-health,MERGED,
+gcgo-selftest,command (gia-governance-suite),gia-core,command /gcgo-selftest,MERGED,
+gcgo-brief,command (gia-governance-suite),gia-core,command /gcgo-brief,MERGED,
+gia-lesson,command,gia-core,command /gia-lesson,MERGED,self-learning
+akos-init,command (akos-enterprise-orchestrator),gia-core,command /akos-init,MERGED,project-memory
+akos-status,command (akos-enterprise-orchestrator),gia-core,command /akos-status,MERGED,project-memory
+gcae-status,command (gcae),gia-core,command /status,MERGED,Renamed /gia-core:status
+gcae-restart,command (gcae),gia-core,command /restart,MERGED,Renamed /gia-core:restart
+gcae-scope,command (gcae),gia-core,command /scope,MERGED,Renamed /gia-core:scope
+gia-route,command (gia-command-plugin),gia-core,command /gcgo,RETIRED,Folded into /gcgo
+assure-start,command (gia-assurance-value-chain),gia-core,gcgo-router,MERGED,Moved to router in gia-core
+log-pattern,command (gia-assurance-value-chain),gia-core,self-learning,MERGED,Moved to gia-core self-learning
+fraud-plan,command (fraud),gia-fraud,command /fraud-plan,MERGED,Same name
+fraud-test,command (fraud),gia-fraud,command /fraud-test,MERGED,Same name
+fraud-case,command (fraud),gia-fraud,command /fraud-case,MERGED,Experimental
+audit-start,command (fraud),gia-fraud,command /audit-start,MERGED,Same name
+audit-deepdive,command (fraud),gia-fraud,command /audit-deepdive,MERGED,Same name
+audit-mindmap,command (fraud),gia-fraud,command /audit-mindmap,MERGED,Same name
+audit-rfi,command (fraud),gia-fraud,command /audit-rfi,MERGED,Same name
+audit-scenario,command (fraud),gia-fraud,command /audit-scenario,MERGED,Same name
+audit-escalate,command (fraud),gia-fraud,command /audit-escalate,MERGED,Same name
+report-qa,command (gia-assurance-value-chain),gia-report-qa,command /report-qa,MERGED,Same name
+trace-check,command (gia-assurance-value-chain),gia-report-qa,command /trace-check,MERGED,Same name
+exec-brief,command (gia-assurance-value-chain),gia-report-qa,command /exec-brief,MERGED,Same name
+finding-sheet,command (gia-assurance-value-chain),gia-report-qa,command /finding-sheet,MERGED,Same name
+closure-validate,command (gia-assurance-value-chain),gia-report-qa,command /closure-validate,MERGED,Same name
+director-brief,command (gia-assurance-value-chain),gia-report-qa,command /board-brief,MERGED,Mode B
+cae-quality-gate,command (ai-cae-mktron),gia-report-qa,command /report-qa,MERGED,14-item gate retired; 12 stands
+cae-ac-pack,command (ai-cae-mktron),gia-report-qa,command /ac-pack,MERGED,
+gia-qa,command (gia-governance-suite),gia-report-qa,command /report-qa,MERGED,
+presentation,command (mktron-presentation-intelligence),gia-report-qa,command /presentation,MERGED,Same name
+presentation-review,command (mktron-presentation-intelligence),gia-report-qa,presentation review mode,MERGED,Folded into review modes
+presentation-qa,command (mktron-presentation-intelligence),gia-report-qa,presentation challenge mode,MERGED,Folded into review modes
+cae-monthly-cycle,command (ai-cae-mktron),gia-audit,gia-audit-lifecycle,MERGED,MOVED to gia-audit
+portfolio-qa-challenger,agent (gia-core),gia-core,agents/portfolio-qa-challenger,MERGED,"Read/Grep/Glob, sonnet"
+fleet agents alpha-scout to zeta-remediator (11),agent (grc-agentic-fleet),gia-core,agents/ (eleven fleet agents),MERGED,Pinned sonnet; zeta-remediator also in gia-report-qa
+akos plugin agents (14),agent (akos-enterprise-orchestrator),gia-core,agents/ (roles),MERGED,Merged into roles; inherit forbidden
+fraud-data-analyst,agent (gia-fraud),gia-fraud,fraud-data-analyst,MERGED,"Same name, sonnet"
+fraud-adversarial-reviewer,agent (gia-fraud),gia-fraud,fraud-adversarial-reviewer,MERGED,Same name
+fraud-evidence-reviewer,agent (gia-fraud),gia-fraud,fraud-evidence-reviewer,MERGED,Same name
+fraud-analyst,agent (entity group plugin),gia-fraud,fraud-data-analyst; gia-fraud-entity-watch,MERGED,Split
+beta-analyst,agent (gia-analytics / fraud),gia-analytics,recon-analyst,MERGED,Recon part; fraud tests to gia-fraud fraud-data-analyst
+fraud-investigation-coordinator,agent (fraud),gia-fraud,fraud-coordinator,MERGED,Human-gated routing
+"rbia agents (8: orchestrator, forensic-data, evidence-custodian, master-data-process, forecasting-scenario, ethics-abc, legal-compliance, governance-strategy)",agent (rbia),gia-fraud,same names (orchestrator renamed rbia-orchestrator),MERGED,Aliases sonnet and haiku
+financial-cost-accounting,agent (rbia),gia-analytics,cost-accounting-analyst,MERGED,MOVED from gia-fraud
+iron-qa-gate,agent (rbia),gia-report-qa,report-qa-reviewer,RETIRED,REPLACED
+theta-simulator,agent (gia-analytics),gia-analytics,scenario-simulator,MERGED,Merged with gia-scenario-modelling
+data-validator,agent (gia-analytics),gia-analytics,data-validator,MERGED,PORTED; no Write tool
+"GCAE agents AG-005, AG-006, AG-007, AG-009, AG-019",agent (GCAE),gia-analytics,skill content in matching skills,RETIRED,"HARVESTED, agents dropped"
+GCAE fraud AG-008,agent (GCAE),gia-fraud,gia-fraud-investigation,RETIRED,"HARVESTED, agent dropped"
+report-qa-reviewer,agent (assurance-value-chain),gia-report-qa,agents/report-qa-reviewer,MERGED,Pinned sonnet
+"qa-reviewer (akos), delta-validator, iota-kaizen",agent,gia-report-qa,report-qa-reviewer,MERGED,KG-integrity moved to gia-core
+"report-writer, epsilon-strategist, assurance-improvement-reporting-lead",agent,gia-report-qa,agents/report-builder,MERGED,External mode
+board-reporting-coordinator,agent (ai-cae-mktron),gia-report-qa,agents/board-pack-coordinator,MERGED,
+zeta-remediator,agent (grc-agentic-fleet),gia-report-qa,gia-evidence-trace,MERGED,Section 6
+29 presentation agents,agent (mktron-presentation-intelligence),gia-report-qa,gia-presentation (8 agents),MERGED,Compliance and operations roles MOVED to gia-audit
+GCAE agents 21-27,agent (GCAE),gia-core,runtime-guard,RETIRED,Dropped as boilerplate

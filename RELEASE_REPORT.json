@@ -1,0 +1,55 @@
+{
+  "version": "2.0.7",
+  "steps": [
+    {
+      "step": "MANIFEST",
+      "ok": true,
+      "detail": "208 files verified",
+      "seconds": 0.0
+    },
+    {
+      "step": "COMPILE",
+      "ok": true,
+      "detail": "97 Python files compile",
+      "seconds": 0.2
+    },
+    {
+      "step": "SKILL",
+      "ok": true,
+      "detail": "description 939/1024 chars, version 2.0.7",
+      "seconds": 0.0
+    },
+    {
+      "step": "SURFACE",
+      "ok": true,
+      "detail": "70 v1.2.0 flags across 20 commands all present",
+      "seconds": 4.5
+    },
+    {
+      "step": "GOLDEN",
+      "ok": true,
+      "detail": "43 scenarios compared; regressions: 0; allowed intentional changes: 0",
+      "seconds": 12.3
+    },
+    {
+      "step": "TESTS",
+      "ok": true,
+      "detail": "skill: 366 passed, 12 skipped in 151.90s (0:02:31); plugin: 74 passed in 6.02s; patch: 51 skipped in 0.15s",
+      "seconds": 160.0
+    },
+    {
+      "step": "TOOLS",
+      "ok": true,
+      "detail": "pilot_sampler.py: pilot_sampler selftest OK; post_install_check.py: post_install_check selftest OK",
+      "seconds": 5.4
+    },
+    {
+      "step": "SETUP.PS1",
+      "ok": true,
+      "detail": "parses in Windows PowerShell, no control characters",
+      "seconds": 0.4
+    }
+  ],
+  "manifest_root_sha256": "4660158ce1897faf70e9621a3510469ce89c802c26ed8a564db61c574051dd2b",
+  "passed": true
+}
