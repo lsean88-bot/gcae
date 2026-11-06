@@ -19,6 +19,10 @@ The same file is already at `.claude/skills/meridian-gia/SKILL.md` in this kit.
 3. Paste the instructions under the front matter into the project instructions.
 4. Or, in the app, click **Copy Claude constitution** on Agent harness and paste that shorter text.
 
+## Connector (Claude Desktop / Claude Code)
+
+The skill describes the Meridian MCP tools and their limits. The MCP server itself is in `mcp/` and is set up as in `docs/CLAUDE-CONNECTOR.md`. The skill alone does not connect to Meridian.
+
 ## What this plugin does not do
 
 It does not replace the web app. It does not contain a hidden model key. It does not issue audit reports. It tells Claude how to behave when a person asks for audit help.

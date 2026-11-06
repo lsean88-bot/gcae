@@ -1,3 +1,4 @@
+import "dotenv/config"; // loads .env without overriding variables already set (CI)
 import { securityChecks } from "../src/server/security-checks";
 import { eq } from "drizzle-orm";
 import { db } from "../src/db";

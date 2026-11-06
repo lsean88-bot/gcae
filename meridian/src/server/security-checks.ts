@@ -1,8 +1,11 @@
-import { readFileSync } from "fs";
+import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db, pool } from "@/db";
-import { loginAttempts, people, sessions } from "@/db/schema";
+import { agentRuns, apiTokens, engagements, evidence, findings, lessons, loginAttempts, people, sessions } from "@/db/schema";
+import { weakensIronRule } from "@/lib/lessons";
+import { draftFinding, draftReportText, proposeLesson } from "@/server/api-drafts";
+import { authenticateBearer, createToken, hashApiToken, tokenCreationRefusal, type ApiActor } from "@/server/api-tokens";
 import { AUDIT_ROLES, denyAuthority, effectiveAuthority } from "@/lib/guard";
 import { hashPassword, validateNewPassword } from "@/lib/password";
 import { resolveSecret, openSecret } from "@/lib/secret-box";
@@ -151,6 +154,81 @@ export async function securityChecks(): Promise<SecurityCase[]> {
   const owner = denyAuthority("owner", AUDIT_ROLES, "x");
   const auditor = denyAuthority("auditor", AUDIT_ROLES, "x");
   check("T-32", "decideAgentRun and runScreener refuse signed-out, locked and non-audit callers", Boolean(signedOut && locked && owner) && auditor === null && guarded("decideAgentRun") && guarded("runScreener"), `signed-out=${Boolean(signedOut)} locked=${Boolean(locked)} owner=${Boolean(owner)} auditor allowed=${auditor === null} guard in decideAgentRun=${guarded("decideAgentRun")} runScreener=${guarded("runScreener")}`);
+
+  // T-33 to T-38: personal access tokens and the draft-only API.
+  const [gcaePerson] = await db.select().from(people).where(eq(people.id, "p-gcae"));
+  const made = await createToken(gcaePerson, "uat-token", 90, false);
+  const created = made.ok ? made : null;
+  const stored = created ? await db.select().from(apiTokens).where(eq(apiTokens.id, created.id)) : [];
+  const rawLookup = created ? await db.select().from(apiTokens).where(eq(apiTokens.tokenHash, created.token)) : [];
+  check("T-33", "API token is stored as a SHA-256 hash, never raw, with at most 90 days life", Boolean(created) && stored.length === 1 && rawLookup.length === 0 && stored[0].tokenHash === hashApiToken(created!.token) && /^[0-9a-f]{64}$/.test(stored[0].tokenHash) && stored[0].expiresAt - stored[0].createdAt <= 90 * 86400000, `stored=${stored.length} raw found=${rawLookup.length} days=${stored[0] ? Math.round((stored[0].expiresAt - stored[0].createdAt) / 86400000) : "n/a"}`);
+
+  const req = (token: string, extra: Record<string, string> = {}) => new Request("http://x/api/v1/engagements", { headers: { authorization: `Bearer ${token}`, ...extra } });
+  const control = created ? await authenticateBearer(req(created.token), "read") : null;
+  const tokenFor = async (id: string, patch: { revokedAt?: number; expiresAt?: number; scopes?: string[] }) => {
+    const raw = `mt_uat${id}${"x".repeat(24)}`;
+    const now = Date.now();
+    await db.insert(apiTokens).values({ id, personId: "p-gcae", name: id, tokenHash: hashApiToken(raw), scopes: patch.scopes || ["read", "draft"], createdAt: now - 1000, expiresAt: patch.expiresAt ?? now + 86400000, revokedAt: patch.revokedAt ?? null });
+    return raw;
+  };
+  const revokedRaw = await tokenFor("tok-uat-revoked", { revokedAt: Date.now() });
+  const expiredRaw = await tokenFor("tok-uat-expired", { expiresAt: Date.now() - 1000 });
+  const readOnlyRaw = await tokenFor("tok-uat-readonly", { scopes: ["read"] });
+  const revoked = await authenticateBearer(req(revokedRaw), "read");
+  const expired = await authenticateBearer(req(expiredRaw), "read");
+  const noDraftScope = await authenticateBearer(req(readOnlyRaw), "draft");
+  const cookie = created ? await authenticateBearer(req(created.token, { cookie: "meridian_session=abc" }), "read") : null;
+  const garbage = await authenticateBearer(req("mt_" + "z".repeat(40)), "read");
+  check("T-34", "Revoked, expired, unknown, scope-less and cookie-carrying requests are refused; a live token works", control?.ok === true && !revoked.ok && revoked.status === 401 && !expired.ok && expired.status === 401 && !garbage.ok && garbage.status === 401 && !noDraftScope.ok && noDraftScope.status === 403 && cookie?.ok === false, `live=${control?.ok} revoked=${!revoked.ok && revoked.status} expired=${!expired.ok && expired.status} unknown=${!garbage.ok && garbage.status} read-only token on draft=${!noDraftScope.ok && noDraftScope.status} cookie=${cookie && !cookie.ok && cookie.status}`);
+
+  const [eng] = await db.select().from(engagements).where(eq(engagements.id, "eng-ap"));
+  const evRows = await db.select().from(evidence).where(eq(evidence.engagementId, "eng-ap"));
+  const evId = evRows[0]?.id || "";
+  const actor: ApiActor = { person: gcaePerson, authority: "gcae", tokenId: "tok-uat", tokenName: "uat-token", scopes: ["read", "draft"], actorLabel: "UAT via Claude token uat-token" };
+  const goodBody = { engagementId: "eng-ap", title: "UAT draft finding", condition: "Approvals were missing on sampled invoices.", rootCause: "[ROOT CAUSE TO BE CONFIRMED WITH MANAGEMENT]", evidenceIds: [evId], likelihood: 3, likelihoodRationale: "Seen in the sample.", impacts: { financial: { score: 4, note: "Payments leave the group.", relevant: true } }, riskRating: "Low", priorityScore: 1, status: "Closed" };
+  const drafted = await draftFinding(actor, goodBody);
+  const draftedId = String(drafted.body.id || "");
+  const [row] = draftedId ? await db.select().from(findings).where(eq(findings.id, draftedId)) : [];
+  const [engAfter] = await db.select().from(engagements).where(eq(engagements.id, "eng-ap"));
+  check("T-35", "A draft finding is forced to Draft, scored server-side, and never issues or changes the engagement", drafted.status === 201 && row?.status === "Draft" && row.priorityScore === 12 && row.priorityBand === "High" && engAfter?.status === eng?.status && engAfter?.gcaeApproved === eng?.gcaeApproved, `http=${drafted.status} status=${row?.status} score=${row?.priorityScore} ${row?.priorityBand} engagement status unchanged=${engAfter?.status === eng?.status}`);
+
+  const withFigure = await draftFinding(actor, { ...goodBody, condition: "Approvals were missing on 987654 invoices." });
+  const [anyEng] = [eng];
+  const reportBad = await draftReportText(actor, "eng-ap", { text: "The loss across the population is MYR 987654 in total and the report may be issued now." });
+  const runsBad = (await db.select().from(agentRuns).where(eq(agentRuns.engagementId, "eng-ap"))).filter((run) => (run.output?.draft || "").includes("987654"));
+  const reportGood = await draftReportText(actor, "eng-ap", { text: "Draft for review only. The file records the control objective and the limitations as written. No figure is added." });
+  if (typeof reportGood.body.id === "string") await db.delete(agentRuns).where(eq(agentRuns.id, reportGood.body.id));
+  const fraudBad = await draftFinding(actor, { ...goodBody, condition: "Fraud was confirmed and the clerk committed fraud." });
+  check("T-36", "Figure guard and fraud-conclusion guard refuse drafts through the API path", Boolean(anyEng) && withFigure.status === 422 && reportBad.status === 422 && runsBad.length === 0 && reportGood.status === 201 && fraudBad.status === 422, `finding with new figure=${withFigure.status} report with new figure=${reportBad.status} stored=${runsBad.length} clean report=${reportGood.status} fraud conclusion=${fraudBad.status}`);
+
+  const apiRoot = join(process.cwd(), "src", "app", "api", "v1");
+  const routeFiles: string[] = [];
+  const walk = (dir: string) => { for (const entry of readdirSync(dir, { withFileTypes: true })) { const full = join(dir, entry.name); if (entry.isDirectory()) walk(full); else routeFiles.push(full); } };
+  try { walk(apiRoot); } catch { /* reported below */ }
+  const forbiddenName = /issue|approve|rating|threshold|delete|overwrite|close|conclude|waive|clear|qa|materiality|decide/i;
+  const badPaths = routeFiles.filter((file) => forbiddenName.test(file.slice(apiRoot.length)));
+  const badMethods = routeFiles.filter((file) => /export\s+(async\s+)?function\s+(PUT|PATCH|DELETE)\b/.test(readFileSync(file, "utf8")));
+  const weak = await proposeLesson(actor, { title: "Speed up", observation: "Audits are slow.", change: "Waive the evidence step to go faster.", ironRule: "None" });
+  const okLesson = await proposeLesson(actor, { title: "UAT lesson", observation: "Seen once.", change: "Record the population count next to records tested.", ironRule: "An evidence gap is not a pass." });
+  const lessonStatus = typeof okLesson.body.id === "string" ? (await db.select().from(lessons).where(eq(lessons.id, okLesson.body.id)))[0]?.status : undefined;
+  if (typeof okLesson.body.id === "string") await db.delete(lessons).where(eq(lessons.id, okLesson.body.id));
+  check("T-37", "No API route can issue, approve, close, clear QA, delete or change thresholds; a lesson that weakens an iron rule is refused; accepted lessons stay proposed", routeFiles.length > 5 && badPaths.length === 0 && badMethods.length === 0 && weak.status === 422 && okLesson.status === 201 && lessonStatus === "proposed", `routes=${routeFiles.length} forbidden paths=${badPaths.length} PUT/PATCH/DELETE=${badMethods.length} weakening lesson=${weak.status} lesson status=${lessonStatus}`);
+
+  const refusals = (["owner", "executive", "none"] as const).map((authority) => tokenCreationRefusal({ authority, mustChange: false }));
+  const lockedRefusal = tokenCreationRefusal({ authority: "gcae", mustChange: true });
+  const allowed = ["gcae", "manager", "auditor", "qa"].map((authority) => tokenCreationRefusal({ authority, mustChange: false }));
+  const ownerAttempt = await createToken({ id: "p-owner-x", name: "Owner", authority: "owner", mustChange: false }, "x", 90, false);
+  const lockedAttempt = await createToken({ id: "p-gcae", name: "Locked", authority: "gcae", mustChange: true }, "x", 90, false);
+  const leaked = await db.select().from(apiTokens).where(eq(apiTokens.personId, "p-owner-x"));
+  check("T-38", "Owners, executives, signed-out and one-time-password users cannot create a token; IA roles can", refusals.every(Boolean) && Boolean(lockedRefusal) && allowed.every((x) => x === null) && !ownerAttempt.ok && !lockedAttempt.ok && leaked.length === 0, `owner/exec/none refused=${refusals.every(Boolean)} locked refused=${Boolean(lockedRefusal)} IA roles allowed=${allowed.every((x) => x === null)} owner create ok=${ownerAttempt.ok} locked create ok=${lockedAttempt.ok}`);
+
+  const legit = ["Never close a finding without evidence", "Use bypass lists carefully"].map(weakensIronRule);
+  const weakening = ["Agents may bypass QA", "Auto-approve materiality", "Waive the evidence step to go faster", "Issue without GCAE review"].map(weakensIronRule);
+  check("T-39", "Lesson screen passes legitimate rule-keeping sentences and rejects rule-relaxing ones", legit.every((x) => !x) && weakening.every(Boolean), `legit flagged=${legit.join(",")} relaxing flagged=${weakening.join(",")}`);
+
+  // Clean up the test rows. The audit log keeps its events.
+  if (draftedId) await db.delete(findings).where(eq(findings.id, draftedId));
+  await db.delete(apiTokens).where(inArray(apiTokens.id, ["tok-uat-revoked", "tok-uat-expired", "tok-uat-readonly", ...(created ? [created.id] : [])]));
 
   return cases;
 }

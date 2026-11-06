@@ -167,6 +167,7 @@ For a live audit, open a new engagement and register that period’s extract.
 | I want to… | Click |
 | --- | --- |
 | Connect Claude or ChatGPT | Connect AI |
+| Let Claude Desktop or Claude Code read the file and file drafts from my PC | Account, then `CLAUDE-CONNECTOR.md` |
 | See what needs a decision | Command |
 | Open or plan an audit | Engagements or Audit universe |
 | Paste a file | Evidence ledger |

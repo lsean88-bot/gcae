@@ -375,3 +375,16 @@ export const lessons = pgTable("lessons", {
   decidedBy: text("decided_by"),
   decisionNote: text("decision_note"),
 });
+
+/** Personal access tokens for the local Claude connector. Only the SHA-256 of the token is stored. */
+export const apiTokens = pgTable("api_tokens", {
+  id: text("id").primaryKey(),
+  personId: text("person_id").notNull(),
+  name: text("name").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  scopes: jsonb("scopes").$type<string[]>().notNull(),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  expiresAt: bigint("expires_at", { mode: "number" }).notNull(),
+  lastUsedAt: bigint("last_used_at", { mode: "number" }),
+  revokedAt: bigint("revoked_at", { mode: "number" }),
+});

@@ -8,3 +8,4 @@ docs
 plugin
 *.tsbuildinfo
 npm-debug.log*
+mcp

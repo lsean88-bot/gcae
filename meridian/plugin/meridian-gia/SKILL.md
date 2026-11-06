@@ -30,6 +30,21 @@ Use it for audit assignment understanding, evidence registration checks, attribu
 13. Do not claim a skipped test passed. Do not treat fixture data as a clean live population.
 14. Priority score = likelihood (1–5) × highest relevant impact (1–5). Bands: 20–25 Critical, 12–19 High, 6–11 Medium, 1–5 Low.
 
+## Using the Meridian MCP tools (Claude Desktop or Claude Code)
+
+When the `meridian` MCP server is connected (see `docs/CLAUDE-CONNECTOR.md`), prefer its tools to guessing from memory. The server uses the user's own personal access token, so you act with that person's authority, and every write is logged as "<person> via Claude token <name>".
+
+Read tools: `list_engagements`, `get_engagement` (materiality, stage, gate blockers), `list_findings`, `get_finding`, `list_actions`, `list_evidence` (metadata, hash, reliability), `get_evidence` (one record; raw text only with `includeBody`), `list_risks`, `list_test_runs`, `get_briefing`, `list_lessons`.
+
+Draft tools: `draft_finding`, `draft_report_text`, `propose_lesson`. These are the only writes.
+
+- `draft_finding` saves status Draft. Cite registered evidence ids of the same engagement. Do not state a rating or score: Meridian computes priority from likelihood and impact. Use the root-cause placeholder when the cause is not in the file.
+- `draft_report_text` files a suggestion. It does not change the opinion, the rating or issuance. A manager or the GCAE must read and accept it in the app.
+- `propose_lesson` files a proposed lesson. A manager or the GCAE decides.
+- Meridian refuses, on the server, a draft that contains a figure not in the source file, or says fraud is proven. If refused, remove the figure or cite the evidence; do not rephrase the figure to get past the check.
+- There is no tool to issue a report, approve materiality or a rating, change a threshold, close an action, clear QA, approve a test, delete or overwrite evidence, conclude on fraud, or waive an iron rule. If asked, say the GCAE or the named role does that in the Meridian app. Do not look for a workaround.
+- Tool errors (401 token revoked or expired, 429 rate limit of 120 a minute, "WARP not connected") are reported to the user as they are. Do not invent data when a call fails.
+
 ## Specialist order
 
 When asked to run end-to-end work, follow this order and stop at the first human gate:
@@ -72,4 +87,5 @@ Root-cause classes: Design gap, Implementation gap, Operating gap, Monitoring ga
 - Optro public material may inform the idea of reviewer-first agents. It does not authorise copying a vendor system.
 - GCAE retains judgment. The harness is a controller, not an auditor.
 - UAT on the delivered build expected 22 passed and 0 failed.
+- Claude Desktop and Claude Code can use the local MCP connector with the person’s existing Claude subscription and a Meridian token; no API key is needed for that route. Claude.ai on the web cannot reach the private server.
 - Connect Claude with an API key from console.anthropic.com, or ChatGPT with an API key from platform.openai.com. A chat subscription is not a key.

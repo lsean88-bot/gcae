@@ -26,10 +26,12 @@ import { isoOffset, todayIso, uid } from "@/lib/format";
 import { canAdvance, gateBlockers } from "@/lib/gates";
 import { AUDIT_ROLES, denyAuthority, effectiveAuthority } from "@/lib/guard";
 import { sha256, shortHash } from "@/lib/hash";
+import { weakensIronRule } from "@/lib/lessons";
 import { cadenceDays } from "@/lib/methodology";
 import { buildPrompt, type BriefInput } from "@/lib/reports";
 import { ensureSeed } from "@/lib/seed";
 import { loadAiStatus, loadProviderKey, preferProvider, removeProviderKey, saveProviderKey } from "@/server/ai-config";
+import { briefFor } from "@/server/brief";
 import { executeHarness } from "@/server/harness";
 import { runSimulation } from "@/server/simulation";
 import { runUat } from "@/server/uat";
@@ -117,6 +119,25 @@ export async function changePassword(currentPassword: string, nextPassword: stri
   await log("Changed password", "person", who.id, "Password changed. Other sessions ended. The new password is not stored in the log.", undefined, "changed");
   refresh();
   return { ok: true, message: "Password changed. Use it next time you sign in." };
+}
+
+export async function createApiToken(name: string, days: number, readOnly: boolean): Promise<{ ok: true; token: string; message: string } | { ok: false; error: string }> {
+  const who = await sessionPerson();
+  const { createToken } = await import("@/server/api-tokens");
+  const result = await createToken(who, String(name ?? ""), Number(days), Boolean(readOnly));
+  if (!result.ok) return result;
+  refresh();
+  return { ok: true, token: result.token, message: "Token created. Copy it now. It is shown once and cannot be recovered." };
+}
+
+export async function revokeApiToken(tokenId: string): Promise<ActionResult> {
+  const who = await sessionPerson();
+  if (who.authority === "none") return { ok: false, error: "Sign in required." };
+  const { revokeToken } = await import("@/server/api-tokens");
+  const result = await revokeToken(who, String(tokenId ?? ""));
+  if (!result.ok) return result;
+  refresh();
+  return { ok: true, message: "Token revoked. It stops working immediately." };
 }
 
 export async function reopenReport(engagementId: string, note: string): Promise<ActionResult> {
@@ -980,38 +1001,6 @@ export async function proposeMateriality(engagementId: string, amount: number, c
   return { ok: true, message: "Proposal stored. It is not approved until the GCAE signs it." };
 }
 
-async function briefFor(engagementId: string, audience: string): Promise<BriefInput | null> {
-  const [engagement] = await db.select().from(engagements).where(eq(engagements.id, engagementId));
-  if (!engagement) return null;
-  const [entity] = await db.select().from(entities).where(eq(entities.id, engagement.entityId));
-  const findingRows = await db.select().from(findings).where(eq(findings.engagementId, engagementId));
-  const actionRows = await db.select().from(actions).where(eq(actions.engagementId, engagementId));
-  const peopleRows = await db.select().from(people);
-  const tests = await db.select().from(testRuns).where(eq(testRuns.engagementId, engagementId));
-  const nameOf = (id: string) => peopleRows.find((person) => person.id === id)?.name || "Unassigned";
-  return {
-    title: engagement.title,
-    code: engagement.code,
-    period: engagement.period,
-    entityName: entity?.name || "",
-    objective: engagement.objective,
-    scope: engagement.scope,
-    businessContext: engagement.businessContext,
-    limitations: engagement.limitations,
-    overallRating: engagement.overallRating,
-    opinion: engagement.opinion,
-    ratingOverrideReason: engagement.ratingOverrideReason,
-    audience,
-    materialityAmount: engagement.materialityAmount,
-    materialityCurrency: engagement.materialityCurrency,
-    materialityApproved: engagement.materialityApproved,
-    gcaeApproved: engagement.gcaeApproved,
-    findings: findingRows,
-    actions: actionRows.map((action) => ({ ...action, ownerName: nameOf(action.ownerId) })),
-    tests,
-  };
-}
-
 export async function draftWithModel(input: {
   engagementId: string;
   provider: AiProvider;
@@ -1168,7 +1157,7 @@ export async function decideLesson(id: string, decision: "accepted" | "rejected"
   if (!note.trim()) return { ok: false, error: "Write why you accept or reject the lesson." };
   const [lesson] = await db.select().from(lessons).where(eq(lessons.id, id));
   if (!lesson) return { ok: false, error: "Lesson not found." };
-  if (decision === "accepted" && /waive|skip the iron|ignore the rule|auto-issue/i.test(`${lesson.change} ${note}`)) {
+  if (decision === "accepted" && weakensIronRule(`${lesson.change} ${note}`)) {
     return { ok: false, error: "This lesson would weaken an iron rule. It cannot be accepted." };
   }
   await db.update(lessons).set({ status: decision, decidedBy: who.id, decisionNote: note }).where(eq(lessons.id, id));

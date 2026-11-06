@@ -19,7 +19,7 @@ import { loadAiStatus, loadProviderKey } from "@/server/ai-config";
 import { compareReperformance, parseCsv, PROCEDURES, runProcedure } from "@/lib/engine";
 import { isOverdue, effectiveDue, todayIso, uid } from "@/lib/format";
 import { shortHash } from "@/lib/hash";
-import { ensureLessons } from "@/lib/lessons";
+import { ensureLessons, weakensIronRule } from "@/lib/lessons";
 import { claudeConstitution, FORBIDDEN } from "@/lib/specialists";
 import { buildBriefing, qualityChecks, type BriefInput } from "@/lib/reports";
 
@@ -371,9 +371,6 @@ export async function executeHarness(engagementId: string, actorName: string) {
   return { ok: true as const, id: harnessId, steps, message: "Harness complete. Nothing was issued." };
 }
 
-function weakensIronRule(text: string) {
-  return /waive|skip the iron|ignore the rule|without evidence|auto-issue|no approval/i.test(text);
-}
 
 async function interpretWithModel(code: string, steps: HarnessStep[], provider: "claude" | "openai" | "gemini", model: string) {
   const packet = steps.map((step) => `${step.agent} / ${step.skill} / ${step.status}\n${step.summary}\n${step.detail.slice(0, 700)}`).join("\n---\n");

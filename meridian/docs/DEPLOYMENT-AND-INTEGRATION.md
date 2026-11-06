@@ -195,6 +195,10 @@ If the model name is rejected, set `GEMINI_MODEL` to a model shown in Google AI 
 
 If a draft contains a figure that is not already in the file, the app refuses to save it into the opinion.
 
+## Part F2. Claude Desktop or Claude Code through a personal access token
+
+For staff who already have a Claude subscription, the local connector in `mcp/` reads Meridian and files drafts only. Setup is in `CLAUDE-CONNECTOR.md`. It needs WARP, the Caddy root CA file, and Node 22 on the PC. Claude.ai on the web cannot reach the private server. The server enforces the same forbidden list as Part F.
+
 ## Part G. Disconnect
 
 1. Open **Connect AI** as the GCAE.

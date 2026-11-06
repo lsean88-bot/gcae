@@ -44,6 +44,14 @@ jobs:
         env:
           NODE_ENV: production
       - run: npm audit --omit=dev --audit-level=high
+      - name: Build the MCP connector
+        working-directory: meridian/mcp
+        run: npm ci && npm run build
+      - name: MCP smoke test (tools listed, forbidden names absent)
+        working-directory: meridian/mcp
+        run: npm run smoke
+      - run: npm audit --omit=dev --audit-level=high
+        working-directory: meridian/mcp
   docker:
     runs-on: ubuntu-latest
     steps:

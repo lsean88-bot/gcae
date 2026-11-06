@@ -47,3 +47,9 @@ export async function ensureLessons() {
     },
   ]);
 }
+
+/** One shared test for a lesson that would weaken an iron rule. Used by the harness, the manager decision and the API. */
+export function weakensIronRule(text: string) {
+  // Original patterns (kept), then intent patterns: a phrase that relaxes a rule, not a bare word.
+  return /waive|skip the iron|ignore the rule|auto-?issue|no approval|auto-?(approve|close)|issue without|\b(may|can|could|should|allow(ed)?|permit(ted)?|ok(ay)? to|able to)\b[^.]{0,40}\b(skip|bypass|waive|ignore|override)\b|\b(skip|bypass)(ing)?\s+(the\s+)?(evidence|review|qa|approval|gate|guard)\b|without (human|manager|qa|gcae)\b[^.]{0,20}(approval|review|sign-?off)|\b(may|can|could|should|allow(ed)?|permit(ted)?)\b[^.]{0,40}without evidence/i.test(text);
+}

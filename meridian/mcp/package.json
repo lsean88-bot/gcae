@@ -1,0 +1,22 @@
+{
+  "name": "meridian-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local stdio MCP server that lets Claude Desktop or Claude Code read Meridian and file drafts through a personal access token. It cannot issue, approve or close anything.",
+  "type": "module",
+  "main": "dist/index.js",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "tsc",
+    "smoke": "node scripts/smoke.mjs",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.15",
+    "typescript": "5.9.3"
+  }
+}
