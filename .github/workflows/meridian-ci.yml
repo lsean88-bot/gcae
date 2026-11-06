@@ -49,6 +49,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build runtime image (no push)
-        run: docker build -t meridian-app:ci meridian
+        run: docker build -t meridian-app:ci .
       - name: Build tools image (no push)
-        run: docker build --target tools -t meridian-tools:ci meridian
+        run: docker build --target tools -t meridian-tools:ci .
