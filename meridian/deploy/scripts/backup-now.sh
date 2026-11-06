@@ -13,5 +13,11 @@ docker compose --env-file .env exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d 
 [ -s "$OUT" ] || { echo "Backup file empty"; rm -f "$OUT"; exit 1; }
 chmod 600 "$OUT"
 ls -1t backups/meridian-*.sql.gz.gpg | tail -n +$((KEEP + 1)) | xargs -r rm -f
-if [ -n "${RCLONE_REMOTE:-}" ] && command -v rclone >/dev/null; then rclone copy "$OUT" "$RCLONE_REMOTE" && echo "Uploaded to $RCLONE_REMOTE"; fi
+# Caddy internal CA (root key): encrypted, so a rebuild keeps the certificate staff already trust.
+CA_OUT="backups/caddy-ca-$(date -u +%Y%m%dT%H%M%SZ).tar.gz.gpg"
+docker run --rm -v meridian_caddy_data:/data:ro alpine:3 tar -czf - -C /data . \
+  | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 --symmetric --cipher-algo AES256 -o "$CA_OUT" 3<<<"$BACKUP_PASSPHRASE"
+chmod 600 "$CA_OUT"
+ls -1t backups/caddy-ca-*.tar.gz.gpg | tail -n +$((KEEP + 1)) | xargs -r rm -f
+if [ -n "${RCLONE_REMOTE:-}" ] && command -v rclone >/dev/null; then rclone copy "$OUT" "$RCLONE_REMOTE" && rclone copy "$CA_OUT" "$RCLONE_REMOTE" && echo "Uploaded to $RCLONE_REMOTE"; fi
 echo "Backup written: $OUT"

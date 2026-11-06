@@ -6,7 +6,7 @@ The calculations stay in the app. The model only interprets the packet or rewrit
 
 ## Part A. Deploy the app
 
-Preferred route (Docker on Oracle Cloud Free behind Cloudflare Tunnel and Access, or an office PC): follow [DEPLOY-ORACLE-CLOUDFLARE.md](DEPLOY-ORACLE-CLOUDFLARE.md). The manual steps below remain for a hand-built server.
+Preferred route (Docker on Oracle Cloud Free with a Cloudflare private-network tunnel and WARP, no domain needed, or an office PC): follow [DEPLOY-ORACLE-CLOUDFLARE.md](DEPLOY-ORACLE-CLOUDFLARE.md). The manual steps below remain for a hand-built server.
 
 ### A1. What you need
 
