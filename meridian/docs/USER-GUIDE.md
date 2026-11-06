@@ -161,6 +161,38 @@ The order is fixed:
 
 These are audit tests on a file you registered. They are not proof of fraud.
 
+## ERM heat map (Assurance, then ERM heat map)
+
+1. Click **ERM heat map**. Choose **Inherent** or **Residual**.
+2. Narrow the view with Entity, Category or Owner.
+3. Each square says how many risks sit there, with its score and band. Click a square to list those risks. Click a risk to read it.
+4. Under the grid you see the count per band, the top 10, and how many risks have no linked control.
+5. To record a residual score, open the risk. Only the risk owner, an audit manager or the GCAE can save it. Write the controls you rely on. The app never guesses a residual score: until someone assesses it, the risk shows **Residual not assessed** and is left off the residual grid.
+
+Bands: 20 to 25 Critical, 12 to 19 High, 6 to 11 Medium, 1 to 5 Low. Executives can read this page. An executive who is the named owner of a risk may also save the residual assessment for that risk (owner rights). They cannot assess risks they do not own.
+
+## Annual audit plan (Strategy, then Annual audit plan)
+
+1. Manager or GCAE: type the year and your capacity in audit days, then **Draft a plan**. Capacity is your figure. The app does not estimate it.
+2. **Add an item** for each audit: entity, title, quarter, days, rationale. Tick **Mandatory** only with a reason (law, regulator, Board).
+3. Read **Suggested ranking**. It scores each entity from its highest linked risk (residual if assessed, otherwise inherent), years since the last audit, and the mandatory flag. It is a suggestion. You choose the items.
+4. The weights start as **proposed, awaiting GCAE approval** (risk 50, years since last audit 30, mandatory 20). Only the GCAE can change them. Approving the plan approves them.
+5. A red banner shows if planned days exceed capacity. The GCAE must tick a box to approve an over-capacity plan.
+6. GCAE: **Approve plan (GCAE)**. This is not Audit Committee approval.
+7. After approval, any edit to an item, capacity or weights creates a new Draft version. The approved version stays as it was. Pick a version from the list at the top. When a newer version is approved, the earlier approved version shows **Superseded** and becomes read only.
+8. GCAE: after the Audit Committee meets, type the meeting date and the minute reference and click **Record: noted by Audit Committee**. The app records what you type. It does not check the minute.
+9. Update progress (Planned, In progress, Completed, Deferred, Cancelled). Deferring or cancelling needs a reason. Progress changes are logged.
+10. **Download Excel**. The Notes sheet states the method and the weights.
+
+## Audit Committee pack (Strategy, then Audit Committee pack)
+
+1. GCAE or manager: choose the period and click **Generate draft pack**. Use the GCAE account for a pack you intend to release. A manager's draft is built from the manager's limited view and cannot be released.
+2. Read the pack: plan progress, reports issued in the period, open findings by band and age, overdue actions (owner role and follow-up cadence from the rules above), risk summary, accepted Kaizen lessons, and limitations.
+3. Every page says **DRAFT — not issued** until the GCAE clicks **Release pack**. Release freezes the figures and shows a SHA-256 hash. The database also refuses any change to, or deletion of, a released pack. Later changes to the data do not alter a released pack. Generate a new pack to show newer figures.
+4. **Print** gives a clean page. **Download Excel** gives the same figures in a workbook.
+5. Restricted engagements are never named, and plan items linked to them appear as "Restricted item" with the reason withheld. The pack says only "N restricted engagement(s) — reported to the AC Chair separately".
+6. No model is used to build the pack. Executives can read released packs only.
+
 ## Demonstration file
 
 The first visit loads a practice file. It is not your live population.
@@ -186,6 +218,9 @@ For a live audit, open a new engagement and register that period’s extract.
 | Test a control | Testing bench |
 | Score a finding | Findings |
 | Chase an action | Action tracker |
+| See risks on a heat map | ERM heat map |
+| Plan the audit year | Annual audit plan |
+| Prepare the Audit Committee pack | Audit Committee pack |
 | Let the specialists run | Agent harness |
 | Accept a lesson | Kaizen |
 | Read or draft the report | Report studio |

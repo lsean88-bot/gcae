@@ -35,7 +35,7 @@ export function RisksView({ data }: { data: Data }) {
             </>
           ))}
         </div>
-        <p className="small muted">Cells show residual position. Maximum product is {max}.</p>
+        <p className="small muted">Cells show residual position. Maximum product is {max}. Risks with no residual assessment are not plotted here. See the <a href="/erm">ERM heat map</a>.</p>
       </div>
       <div className="table-wrap">
         <table className="data">
@@ -48,7 +48,7 @@ export function RisksView({ data }: { data: Data }) {
                 <td><strong>{risk.title}</strong><div className="small muted">{risk.statement}</div></td>
                 <td>{risk.entity}</td>
                 <td>{riskProduct(risk.inherentLikelihood, risk.inherentImpact)}</td>
-                <td>{riskProduct(risk.residualLikelihood, risk.residualImpact)}</td>
+                <td>{risk.residualLikelihood == null || risk.residualImpact == null ? "Not assessed" : riskProduct(risk.residualLikelihood, risk.residualImpact)}</td>
                 <td><Pill tone={risk.appetite}>{risk.appetite}</Pill></td>
                 <td>{risk.treatment}<div className="small muted">{risk.velocity} velocity</div></td>
                 <td>{risk.owner}</td>

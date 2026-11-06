@@ -37,6 +37,27 @@ The word `aibagent` in an earlier note was a typographical error for “AI agent
 - Restricted engagements: only the GCAE sets or lifts the restriction and grants access (table engagement_access). Without access a person sees no trace of the engagement or its records, and direct links behave as not found. One gate does this: `src/server/access.ts`, used by the UI data loader (`bundleFor` in `src/lib/data.ts`), by every mutation on engagement records (`guardRecord`) and by the API. Claude tokens never see restricted engagements, even the GCAE's. External model calls on a restricted engagement are refused unless the GCAE ticks "allow external AI models" for that engagement.
 - Evidence body over the API (`GET evidence/{id}?include=body`) is allowed only for the GCAE, the audit manager, or the auditor who leads that engagement (`engagements.lead_id`). Everyone else gets metadata.
 
+### Strategic modules (ERM heat map, annual plan, Audit Committee pack)
+
+- `risks.residual_likelihood` and `residual_impact` were NOT NULL. They are now nullable so "residual not assessed" is a real state. Existing rows keep their values. Added `residual_rationale`, `residual_assessed_by`, `residual_assessed_at`. Who may assess: the risk owner, manager, GCAE. Audit-logged.
+- New tables: `audit_plans` (year, status Draft / Approved by GCAE / Noted by Audit Committee, capacity_days, weights json, approved_by/at, ac_meeting_date, ac_minute_ref, version, supersedes_id), `plan_items`, `ac_packs` (period, status, snapshot jsonb, snapshot_hash, released_by/at, generated_by_authority).
+- Scoring weights (risk 50, age 30, mandatory 20) are PROPOSED defaults, not GCAE-approved. The age cap of 5 years is also a proposal. They are stored on the plan, editable by the GCAE only, and approved by the act of approving the plan.
+- Approved plans are never edited in place. Content edits (items, capacity, weights) copy the plan to a new Draft version (supersedes_id). Progress (status, engagement link, change reason) is changed in place and audit-logged with before and after. One open Draft successor per plan.
+- The app records the Audit Committee noting from a date and minute reference typed by the GCAE. It never claims AC approval otherwise.
+- AC pack: built from app data only, no model call. Restricted engagements and everything under them are removed from every figure for every viewer, including the GCAE; only a GCAE-generated pack states the count. A manager can generate a draft from a limited view, but only a GCAE-generated pack can be released. The snapshot is hashed with a canonical key-sorted JSON (Postgres jsonb reorders keys) and re-verified at release and on display.
+- Plan status `Superseded` is set on the earlier approved version when a newer one is approved. `scripts/hardening.sql` adds trigger `ac_packs_released_frozen`: no UPDATE or DELETE of a Released pack row (Draft to Released is allowed). Pack masking uses the global restricted-engagement set, not the generator's view.
+- Limits stated in the pack: status is as at the generation date (no status history); finding age is from the engagement issue or start date (findings carry no date); lessons are dated by proposal (no acceptance date); live model connection is not verified.
+- Executives read `/erm` and released packs only. `/plan` is Internal Audit only. The role lists live in `src/components/shell.tsx` (navigation) and `src/lib/strategic-data.ts` (server gate).
+- Logic is in `src/server/strategic-core.ts` (takes the actor as a parameter so UAT can test it); `src/server/strategic.ts` is the thin server-action wrapper. UAT T-46 to T-53 are in `src/server/strategic-checks.ts`.
+
+| Path | Purpose |
+| --- | --- |
+| `src/lib/erm.ts` | Heat grid, top risks, risks without a control (pure) |
+| `src/lib/plan-scoring.ts` | Ranking, weights, capacity, progress (pure) |
+| `src/lib/ac-pack.ts` | Pack snapshot builder, canonical hash (pure) |
+| `src/lib/strategic-data.ts` | Page readers with role gates |
+| `src/app/erm`, `plan`, `ac-pack`, `api/export/plan`, `api/export/ac-pack/[id]` | Screens and Excel exports |
+
 ## 3. Target way of working
 
 Seven evidence-to-assurance stages:

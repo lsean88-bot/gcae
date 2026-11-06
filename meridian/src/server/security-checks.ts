@@ -326,5 +326,8 @@ export async function securityChecks(): Promise<SecurityCase[]> {
   if (draftedId) await db.delete(findings).where(eq(findings.id, draftedId));
   await db.delete(apiTokens).where(inArray(apiTokens.id, ["tok-uat-revoked", "tok-uat-expired", "tok-uat-readonly", ...(created ? [created.id] : [])]));
 
+  const { strategicChecks } = await import("@/server/strategic-checks");
+  cases.push(...(await strategicChecks()));
+
   return cases;
 }

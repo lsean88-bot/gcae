@@ -40,7 +40,7 @@ export async function getActor() {
   };
 }
 
-async function bundle() {
+export async function bundle() {
   await ensureSeed();
   // Server-side gate for every data read. The layout check alone is not a guarantee in Next.js.
   const { getSessionActor } = await import("@/server/session");

@@ -20,6 +20,9 @@ const NAV = [
   { href: "/compliance", label: "Control map", group: "Assurance" },
   { href: "/vendors", label: "Third parties", group: "Assurance" },
   { href: "/governance", label: "AI governance", group: "Assurance" },
+  { href: "/erm", label: "ERM heat map", group: "Assurance" },
+  { href: "/plan", label: "Annual audit plan", group: "Strategy" },
+  { href: "/ac-pack", label: "Audit Committee pack", group: "Strategy" },
   { href: "/agents", label: "Agent harness", group: "Agents" },
   { href: "/kaizen", label: "Kaizen", group: "Agents" },
   { href: "/reports", label: "Report studio", group: "Agents" },
@@ -28,6 +31,13 @@ const NAV = [
   { href: "/simulation", label: "Case simulation", group: "Agents" },
   { href: "/download", label: "Download kit", group: "Agents" },
 ];
+
+// Roles that may see each strategic page. Executives read the ERM heat map and released AC packs only.
+const ROLE_ONLY: Record<string, string[]> = {
+  "/erm": ["gcae", "manager", "auditor", "qa", "owner", "executive"],
+  "/plan": ["gcae", "manager", "auditor", "qa"],
+  "/ac-pack": ["gcae", "manager", "auditor", "qa", "executive"],
+};
 
 export function Shell({
   actor,
@@ -62,8 +72,8 @@ export function Shell({
           </span>
         </Link>
         <nav>
-          {NAV.map((item, index) => {
-            const show = index === 0 || NAV[index - 1].group !== item.group;
+          {NAV.filter((item) => !ROLE_ONLY[item.href] || ROLE_ONLY[item.href].includes(actor.authority)).map((item, index, list) => {
+            const show = index === 0 || list[index - 1].group !== item.group;
             const active = item.href === "/" ? path === "/" : path.startsWith(item.href);
             return (
               <div key={item.href}>

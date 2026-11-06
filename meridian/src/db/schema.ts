@@ -173,8 +173,12 @@ export const risks = pgTable("risks", {
   entityId: text("entity_id"),
   inherentLikelihood: integer("inherent_likelihood").notNull(),
   inherentImpact: integer("inherent_impact").notNull(),
-  residualLikelihood: integer("residual_likelihood").notNull(),
-  residualImpact: integer("residual_impact").notNull(),
+  // Nullable: null means "residual not assessed". The app never guesses a residual score.
+  residualLikelihood: integer("residual_likelihood"),
+  residualImpact: integer("residual_impact"),
+  residualRationale: text("residual_rationale"),
+  residualAssessedBy: text("residual_assessed_by"),
+  residualAssessedAt: text("residual_assessed_at"),
   appetite: text("appetite").notNull(),
   treatment: text("treatment").notNull(),
   ownerId: text("owner_id").notNull(),
@@ -405,3 +409,53 @@ export const engagementAccess = pgTable(
   },
   (t) => [unique("engagement_access_pair").on(t.engagementId, t.personId)],
 );
+
+
+/** Annual risk-based audit plan. An approved plan is never edited in place: a change creates a new Draft version. */
+export const auditPlans = pgTable("audit_plans", {
+  id: text("id").primaryKey(),
+  year: integer("year").notNull(),
+  status: text("status").notNull(), // Draft | Approved by GCAE | Noted by Audit Committee
+  capacityDays: integer("capacity_days").notNull(),
+  weights: jsonb("weights").$type<{ risk: number; age: number; mandatory: number; approved: boolean }>().notNull(),
+  approvedBy: text("approved_by"),
+  approvedAt: text("approved_at"),
+  acMeetingDate: text("ac_meeting_date"),
+  acMinuteRef: text("ac_minute_ref"),
+  version: integer("version").notNull().default(1),
+  supersedesId: text("supersedes_id"),
+  createdBy: text("created_by").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const planItems = pgTable("plan_items", {
+  id: text("id").primaryKey(),
+  planId: text("plan_id").notNull(),
+  entityId: text("entity_id").notNull(),
+  title: text("title").notNull(),
+  quarter: text("quarter").notNull(), // Q1..Q4
+  budgetDays: integer("budget_days").notNull(),
+  rationale: text("rationale").notNull(),
+  riskScore: integer("risk_score"),
+  lastAuditDate: text("last_audit_date"),
+  mandatory: boolean("mandatory").notNull().default(false),
+  mandatoryReason: text("mandatory_reason"),
+  engagementId: text("engagement_id"),
+  status: text("status").notNull().default("Planned"), // Planned | In progress | Completed | Deferred | Cancelled
+  changeReason: text("change_reason"),
+});
+
+/** Audit Committee pack. The snapshot is frozen at generation; Release stamps the hash. */
+export const acPacks = pgTable("ac_packs", {
+  id: text("id").primaryKey(),
+  periodFrom: text("period_from").notNull(),
+  periodTo: text("period_to").notNull(),
+  status: text("status").notNull(), // Draft | Released
+  generatedBy: text("generated_by").notNull(),
+  generatedByAuthority: text("generated_by_authority").notNull(),
+  generatedAt: text("generated_at").notNull(),
+  snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
+  snapshotHash: text("snapshot_hash").notNull(),
+  releasedBy: text("released_by"),
+  releasedAt: text("released_at"),
+});
