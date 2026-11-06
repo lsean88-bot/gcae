@@ -92,7 +92,7 @@ The first page load calls `ensureSeed()`. If `settings.seeded` exists, the demon
 
 ## 6. UAT memory
 
-Delivered UAT result: 32 passed, 0 failed (T-01 to T-22 calculation and gates in `src/server/uat.ts`, T-23 to T-30 security in `src/server/security-checks.ts`). The cases are shown on `/uat`. They live in `src/server/uat.ts` and are shown on `/uat`.
+Delivered UAT result: 32 passed, 0 failed (T-01 to T-22 calculation and gates in `src/server/uat.ts`, T-23 to T-32 security in `src/server/security-checks.ts`). The cases are shown on `/uat`.
 
 They prove procedure results, scoring, gate refusal, figure detection, briefing generation, stored finding scores, and that the harness does not issue or approve materiality.
 
