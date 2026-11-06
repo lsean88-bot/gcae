@@ -3,6 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { apiTokens, auditEvents, people } from "@/db/schema";
 import { todayIso, uid } from "@/lib/format";
+import { engagementForObject } from "@/server/access";
 import { AUDIT_ROLES, denyAuthority, effectiveAuthority } from "@/lib/guard";
 
 export const TOKEN_PREFIX = "mt_";
@@ -27,6 +28,7 @@ export async function auditApi(actor: string, action: string, objectType: string
     beforeState: null,
     afterState: after || null,
     detail,
+    engagementId: await engagementForObject(objectType, objectId),
   });
 }
 

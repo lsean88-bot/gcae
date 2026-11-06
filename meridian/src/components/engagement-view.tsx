@@ -10,10 +10,13 @@ import {
   advanceStage,
   approveMateriality,
   checkSufficiency,
+  grantEngagementAccess,
   issueReport,
   proposeMateriality,
+  revokeEngagementAccess,
   runScreener,
   saveOpinion,
+  setEngagementRestricted,
   updatePbc,
 } from "@/server/mutations";
 
@@ -41,6 +44,7 @@ export function EngagementView({ data }: { data: Data }) {
           <button key={item} className={tab === item ? "tab on" : "tab"} type="button" onClick={() => setTab(item)}>{item}</button>
         ))}
       </div>
+      {data.restriction ? <RestrictionPanel data={data} busy={busy} run={run} /> : null}
       {tab === "Overview" ? <Overview data={data} busy={busy} run={run} /> : null}
       {tab === "Evidence" ? <EvidenceList data={data} /> : null}
       {tab === "Tests" ? <Tests data={data} /> : null}
@@ -306,5 +310,42 @@ function Gates({ data, busy, run }: { data: Data; busy: boolean; run: ReturnType
       ) : null}
       {engagement.status === "Issued" ? <div className="note ok">Issued {formatDate(engagement.issuedAt)} by GCAE approval. The assembler did not issue it.</div> : null}
     </div>
+  );
+}
+
+function RestrictionPanel({ data, busy, run }: { data: Data; busy: boolean; run: ReturnType<typeof useBusyRefresh>["run"] }) {
+  const r = data.restriction!;
+  const id = data.engagement.id;
+  const [pick, setPick] = useState("");
+  return (
+    <section className="panel" style={{ marginBottom: 12 }}>
+      <h2 className="h3">Restricted access (GCAE only)</h2>
+      <p className="small">
+        A restricted engagement and everything under it is hidden from everyone except you and the people you add below. Others cannot see that it exists. Claude tokens never see it, even yours.
+      </p>
+      <label className="field">
+        <span><input type="checkbox" checked={r.restricted} disabled={busy} onChange={(e) => run(() => setEngagementRestricted(id, e.target.checked, r.allowExternalModel))} /> Restrict this engagement</span>
+      </label>
+      {r.restricted ? (
+        <>
+          <label className="field">
+            <span><input type="checkbox" checked={r.allowExternalModel} disabled={busy} onChange={(e) => run(() => setEngagementRestricted(id, true, e.target.checked))} /> Allow external AI models (Claude, ChatGPT, Gemini APIs) to receive this engagement&apos;s data. Off by default.</span>
+          </label>
+          <ul>
+            {r.members.length === 0 ? <li className="small">Only you have access.</li> : null}
+            {r.members.map((m) => (
+              <li key={m.personId}>{m.name} <button className="btn small" type="button" disabled={busy} onClick={() => run(() => revokeEngagementAccess(id, m.personId))}>Revoke</button></li>
+            ))}
+          </ul>
+          <div className="row">
+            <select className="input" value={pick} onChange={(e) => setPick(e.target.value)}>
+              <option value="">Add a person…</option>
+              {r.candidates.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.role}</option>)}
+            </select>
+            <button className="btn small" type="button" disabled={busy || !pick} onClick={() => run(() => grantEngagementAccess(id, pick))}>Grant access</button>
+          </div>
+        </>
+      ) : null}
+    </section>
   );
 }

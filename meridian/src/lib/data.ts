@@ -1,4 +1,4 @@
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
   actions,
@@ -6,6 +6,7 @@ import {
   aiSystems,
   auditEvents,
   controls,
+  engagementAccess,
   engagements,
   entities,
   evidence,
@@ -45,24 +46,29 @@ async function bundle() {
   const { getSessionActor } = await import("@/server/session");
   const signedIn = await getSessionActor();
   if (!signedIn || signedIn.mustChange) throw new Error("Sign in required.");
+  return bundleFor(signedIn);
+}
+
+/** Every UI read goes through here. Exported so UAT can run the same path for a chosen person. */
+export async function bundleFor(signedIn: { id: string; authority: string }) {
   const [
     peopleRows,
     entityRows,
-    engagementRows,
-    evidenceRows,
+    allEngagementRows,
+    allEvidenceRows,
     controlRows,
     riskRows,
-    findingRows,
-    actionRows,
-    testRows,
+    allFindingRows,
+    allActionRows,
+    allTestRows,
     vendorRows,
     aiRows,
-    runRows,
-    eventRows,
-    pbcRows,
+    allRunRows,
+    allEventRows,
+    allPbcRows,
     frameworkRows,
     requirementRows,
-    lessonRows,
+    allLessonRows,
   ] = await Promise.all([
     db.select().from(people),
     db.select().from(entities),
@@ -82,6 +88,20 @@ async function bundle() {
     db.select().from(requirements),
     db.select().from(lessons),
   ]);
+  // Restricted engagements: remove them and every child record for anyone without access. This is the single read gate.
+  const { hiddenEngagementIds, childRecordIds } = await import("@/server/access");
+  const hidden = await hiddenEngagementIds(signedIn);
+  const hiddenIds = hidden.size ? await childRecordIds(hidden) : hidden;
+  const visible = <T extends { engagementId?: string | null }>(rows: T[]) => (hidden.size ? rows.filter((row) => !row.engagementId || !hidden.has(row.engagementId)) : rows);
+  const engagementRows = allEngagementRows.filter((row) => !hidden.has(row.id));
+  const evidenceRows = visible(allEvidenceRows);
+  const findingRows = visible(allFindingRows);
+  const actionRows = visible(allActionRows);
+  const testRows = visible(allTestRows);
+  const runRows = visible(allRunRows);
+  const pbcRows = visible(allPbcRows);
+  const lessonRows = visible(allLessonRows);
+  const eventRows = hidden.size ? allEventRows.filter((row) => !hiddenIds.has(row.objectId) && !(row.engagementId && hidden.has(row.engagementId))) : allEventRows;
   const nameOf = (id?: string | null) => peopleRows.find((person) => person.id === id)?.name || "Unassigned";
   const publicPeople = peopleRows.map((person) => ({
     id: person.id,
@@ -287,8 +307,20 @@ export async function getEngagement(id: string) {
   const engagement = data.engagementRows.find((item) => item.id === id);
   if (!engagement) return null;
   const entity = data.entityRows.find((item) => item.id === engagement.entityId);
+  const actor = await getActor();
+  let restriction: null | { restricted: boolean; allowExternalModel: boolean; members: { personId: string; name: string }[]; candidates: { id: string; name: string; role: string }[] } = null;
+  if (actor.authority === "gcae") {
+    const grants = await db.select().from(engagementAccess).where(eq(engagementAccess.engagementId, id));
+    restriction = {
+      restricted: engagement.restricted,
+      allowExternalModel: engagement.allowExternalModel,
+      members: grants.map((g) => ({ personId: g.personId, name: data.nameOf(g.personId) })),
+      candidates: data.peopleRows.filter((p) => ["manager", "auditor", "qa"].includes(p.authority) && !grants.some((g) => g.personId === p.id)).map((p) => ({ id: p.id, name: p.name, role: p.role })),
+    };
+  }
   return {
-    actor: await getActor(),
+    actor,
+    restriction,
     people: data.peopleRows,
     engagement,
     entity,

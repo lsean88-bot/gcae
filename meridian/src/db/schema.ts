@@ -6,6 +6,7 @@ import {
   pgTable,
   serial,
   text,
+  unique,
 } from "drizzle-orm/pg-core";
 
 export type ImpactCell = {
@@ -120,6 +121,8 @@ export const engagements = pgTable("engagements", {
   startDate: text("start_date").notNull(),
   reportDate: text("report_date"),
   riskAppetite: text("risk_appetite"),
+  restricted: boolean("restricted").notNull().default(false),
+  allowExternalModel: boolean("allow_external_model").notNull().default(false),
 });
 
 export const evidence = pgTable("evidence", {
@@ -344,6 +347,7 @@ export const auditEvents = pgTable("audit_events", {
   beforeState: text("before_state"),
   afterState: text("after_state"),
   detail: text("detail").notNull(),
+  engagementId: text("engagement_id"),
 });
 
 export const pbcRequests = pgTable("pbc_requests", {
@@ -388,3 +392,16 @@ export const apiTokens = pgTable("api_tokens", {
   lastUsedAt: bigint("last_used_at", { mode: "number" }),
   revokedAt: bigint("revoked_at", { mode: "number" }),
 });
+
+/** Who may see a restricted engagement. The GCAE always can and is not listed. */
+export const engagementAccess = pgTable(
+  "engagement_access",
+  {
+    id: serial("id").primaryKey(),
+    engagementId: text("engagement_id").notNull(),
+    personId: text("person_id").notNull(),
+    grantedBy: text("granted_by").notNull(),
+    grantedAt: text("granted_at").notNull(),
+  },
+  (t) => [unique("engagement_access_pair").on(t.engagementId, t.personId)],
+);

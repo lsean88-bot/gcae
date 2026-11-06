@@ -112,6 +112,18 @@ Follow-up cadence:
 6. On the engagement **Gates** tab, move the stage only when the gate is met.
 7. At stage 7, Amira Hassan ticks that the limitations were read, writes a note, and clicks **Issue under my name**.
 
+## Restrict an engagement (GCAE only)
+
+Use this for a fraud investigation or any matter that must stay confidential.
+
+1. Open the engagement. The **Restricted access** panel at the top is shown to the GCAE only.
+2. Tick **Restrict this engagement**. From then on only you and the people you add can see it, its findings, evidence, tests, actions, requests, drafts, exports, search results and audit-log rows. Everyone else sees no sign that it exists.
+3. Under **Add a person**, choose an Internal Audit staff member and click **Grant access**. Click **Revoke** beside a name to remove access.
+4. Claude tokens never see a restricted engagement, not even yours.
+5. Sending a restricted engagement to an outside AI model (Claude, ChatGPT or Gemini API) is refused unless you tick **Allow external AI models** for that engagement. The harness still runs, but skips the model step.
+6. Limits you should know: risks, controls and vendors are shared across engagements at entity level and are **not** restricted. Anything you paste into a model prompt or a chat is your responsibility.
+7. Every restrict, grant and revoke is written to the audit log (visible to you and to people with access).
+
 ## Run the harness
 
 1. Click **Agent harness**.

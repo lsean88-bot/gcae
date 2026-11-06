@@ -7,6 +7,9 @@ This lets Internal Audit staff ask Claude, on their own PC, to read the Meridian
 - Can: read engagements, findings, actions, evidence details (raw evidence text only when Claude asks for one record with its body), risks, test runs, lessons and the generated briefing. It can file a **draft** finding, a **draft** report text, or a **proposed** lesson.
 - Cannot, ever: issue a report, approve materiality or a rating, change a threshold, close an action, clear QA, approve a test, delete or overwrite evidence, conclude on fraud, or waive an iron rule. These are refused by Meridian itself, not only by the connector. No such tool or route exists.
 - Meridian refuses any draft that contains a figure not in the source file, and any draft that says fraud is proven.
+- **Restricted engagements are invisible to Claude.** An engagement the GCAE has restricted, and all its findings, evidence, tests, actions and lessons, never appear through a token, even the GCAE's. Direct ids return "not found". Any attempt is logged.
+- Raw evidence text (`get_evidence` with `includeBody`) is allowed only for the GCAE, the audit manager, and the auditor who leads that engagement. Other people's tokens get the evidence details without the text.
+- QA reviewers can read through a token but cannot file drafts. Draft findings are saved with status "Draft". The GCAE can revoke any person's token.
 - Everything is logged as "<your name> via Claude token <token name>".
 
 ## Before you start

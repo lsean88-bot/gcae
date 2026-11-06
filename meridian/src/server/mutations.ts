@@ -1,6 +1,6 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import {
@@ -8,6 +8,7 @@ import {
   agentRuns,
   aiSystems,
   auditEvents,
+  engagementAccess,
   engagements,
   entities,
   evidence,
@@ -31,6 +32,7 @@ import { cadenceDays } from "@/lib/methodology";
 import { buildPrompt, type BriefInput } from "@/lib/reports";
 import { ensureSeed } from "@/lib/seed";
 import { loadAiStatus, loadProviderKey, preferProvider, removeProviderKey, saveProviderKey } from "@/server/ai-config";
+import { engagementForObject, externalModelRefused, guardRecord, hiddenEngagementIds } from "@/server/access";
 import { briefFor } from "@/server/brief";
 import { executeHarness } from "@/server/harness";
 import { runSimulation } from "@/server/simulation";
@@ -69,6 +71,7 @@ async function log(action: string, objectType: string, objectId: string, detail:
     beforeState: before || null,
     afterState: after || null,
     detail,
+    engagementId: await engagementForObject(objectType, objectId),
   });
 }
 
@@ -140,10 +143,54 @@ export async function revokeApiToken(tokenId: string): Promise<ActionResult> {
   return { ok: true, message: "Token revoked. It stops working immediately." };
 }
 
+async function gcaeOnly() {
+  const who = await actor();
+  const blocked = deny(who.authority, ["gcae"], "Only the GCAE can restrict an engagement or grant access to it.");
+  return { who, blocked };
+}
+
+export async function setEngagementRestricted(engagementId: string, restricted: boolean, allowExternalModel: boolean): Promise<ActionResult> {
+  const { who, blocked } = await gcaeOnly();
+  if (blocked) return blocked;
+  const [engagement] = await db.select().from(engagements).where(eq(engagements.id, engagementId));
+  if (!engagement) return { ok: false, error: "Engagement not found." };
+  await db.update(engagements).set({ restricted: Boolean(restricted), allowExternalModel: restricted ? Boolean(allowExternalModel) : false }).where(eq(engagements.id, engagementId));
+  await log(restricted ? "Restricted engagement" : "Removed restriction", "engagement", engagementId, `${engagement.code}: restricted=${Boolean(restricted)}, external models allowed=${restricted ? Boolean(allowExternalModel) : false}.`, String(engagement.restricted), String(Boolean(restricted)));
+  refresh();
+  return { ok: true, message: restricted ? "Engagement restricted. Only you and the people you grant can see it. Claude tokens never see it." : "Restriction removed." };
+}
+
+export async function grantEngagementAccess(engagementId: string, personId: string): Promise<ActionResult> {
+  const { who, blocked } = await gcaeOnly();
+  if (blocked) return blocked;
+  const [engagement] = await db.select().from(engagements).where(eq(engagements.id, engagementId));
+  const [person] = await db.select().from(people).where(eq(people.id, String(personId ?? "")));
+  if (!engagement || !person) return { ok: false, error: "Engagement or person not found." };
+  if (!["manager", "auditor", "qa"].includes(person.authority)) return { ok: false, error: "Access can be granted to Internal Audit staff only." };
+  await db.insert(engagementAccess).values({ engagementId, personId, grantedBy: who.id, grantedAt: todayIso() }).onConflictDoNothing();
+  await log("Granted engagement access", "engagement", engagementId, `${person.name} can see ${engagement.code}.`);
+  refresh();
+  return { ok: true, message: `${person.name} can now see this engagement.` };
+}
+
+export async function revokeEngagementAccess(engagementId: string, personId: string): Promise<ActionResult> {
+  const { blocked } = await gcaeOnly();
+  if (blocked) return blocked;
+  const [person] = await db.select().from(people).where(eq(people.id, String(personId ?? "")));
+  await db.delete(engagementAccess).where(and(eq(engagementAccess.engagementId, engagementId), eq(engagementAccess.personId, personId)));
+  await log("Revoked engagement access", "engagement", engagementId, `${person?.name || personId} no longer sees this engagement.`);
+  refresh();
+  return { ok: true, message: "Access removed." };
+}
+
 export async function reopenReport(engagementId: string, note: string): Promise<ActionResult> {
   const who = await actor();
   const blocked = deny(who.authority, ["gcae"], "Only the GCAE can reopen an issued report.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { engagementId });
+    if (hidden) return hidden;
+  }
   if (!note.trim()) return { ok: false, error: "Record why the issued report is being reopened." };
   const [engagement] = await db.select().from(engagements).where(eq(engagements.id, engagementId));
   if (!engagement) return { ok: false, error: "Engagement not found." };
@@ -174,6 +221,10 @@ export async function registerEvidence(input: {
   const who = await actor();
   const blocked = deny(who.authority, ["gcae", "manager", "auditor", "qa"], "Only Internal Audit can register evidence. A business owner submits it; Audit records it.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { engagementId: input.engagementId });
+    if (hidden) return hidden;
+  }
   if (input.engagementId) {
     const locked = await lockIfIssued(input.engagementId);
     if (locked) return locked;
@@ -220,6 +271,10 @@ export async function runTest(input: {
   const who = await actor();
   const blocked = deny(who.authority, ["gcae", "manager", "auditor"], "The test executor can be started by an auditor. It cannot approve its own result.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { engagementId: input.engagementId });
+    if (hidden) return hidden;
+  }
   const procedure = procedureById(input.procedure);
   if (!procedure) return { ok: false, error: "That procedure is not in the approved library." };
   const [engagement] = await db.select().from(engagements).where(eq(engagements.id, input.engagementId));
@@ -300,6 +355,10 @@ export async function reperformTest(testId: string): Promise<ActionResult> {
   const who = await actor();
   const blocked = deny(who.authority, ["qa", "gcae"], "Independent QA is Hannah Berg's role, or the GCAE. The person who ran the test cannot clear it.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { testId });
+    if (hidden) return hidden;
+  }
   const [test] = await db.select().from(testRuns).where(eq(testRuns.id, testId));
   if (!test) return { ok: false, error: "Test not found." };
   if (!test.evidenceId) return { ok: false, error: "The test has no evidence link. It cannot be re-performed." };
@@ -356,6 +415,10 @@ export async function decideTest(testId: string, decision: "approved" | "rejecte
   const who = await actor();
   const blocked = deny(who.authority, ["manager", "gcae"], "A test result is approved by the audit manager or the GCAE, not by the agent and not by the preparer alone.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { testId });
+    if (hidden) return hidden;
+  }
   const [test] = await db.select().from(testRuns).where(eq(testRuns.id, testId));
   if (!test) return { ok: false, error: "Test not found." };
   if (decision === "approved" && test.qaStatus !== "cleared") {
@@ -400,13 +463,19 @@ export async function saveFinding(input: {
   const who = await actor();
   const blocked = deny(who.authority, ["gcae", "manager", "auditor"], "Findings are drafted by Internal Audit. The business agrees or disputes. It does not write the finding.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { engagementId: input.engagementId, findingId: input.id });
+    if (hidden) return hidden;
+  }
   const locked = await lockIfIssued(input.engagementId);
   if (locked) return locked;
   if (!input.title.trim() || !input.condition.trim() || !input.evidenceIds.trim()) {
     return { ok: false, error: "A finding needs a title, a condition, and at least one evidence id. No evidence, no finding." };
   }
   const evidenceIds = input.evidenceIds.split(",").map((item) => item.trim()).filter(Boolean);
-  const known = await db.select().from(evidence);
+  const hiddenEngagements = await hiddenEngagementIds(who);
+  // Evidence from a hidden engagement is reported exactly like an id that does not exist.
+  const known = (await db.select().from(evidence)).filter((item) => !item.engagementId || !hiddenEngagements.has(item.engagementId));
   const missingEvidence = evidenceIds.filter((id) => !known.some((item) => item.id === id));
   if (missingEvidence.length) {
     return { ok: false, error: `These evidence ids are not on the ledger: ${missingEvidence.join(", ")}. Register the file before you cite it.` };
@@ -489,6 +558,10 @@ export async function saveAction(input: {
   if (input.status === "Closed") {
     const blocked = deny(who.authority, ["gcae", "manager", "auditor", "qa"], "Management cannot close an action. Internal Audit closes it after validating the evidence.");
     if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { engagementId: input.engagementId, findingId: input.findingId, actionId: input.id });
+    if (hidden) return hidden;
+  }
     if (input.validationStatus !== "Validated") {
       return { ok: false, error: "Closure requires validation status Validated, and evidence received that addresses the root cause. A status change alone is not closure." };
     }
@@ -575,6 +648,10 @@ export async function decideAgentRun(runId: string, decision: "approved" | "reje
   const who = await actor();
   const blocked = deny(who.authority, AUDIT_ROLES, "Only Internal Audit can decide an agent suggestion.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { runId });
+    if (hidden) return hidden;
+  }
   if (decision !== "approved" && decision !== "rejected") return { ok: false, error: "Decision must be approved or rejected." };
   note = String(note ?? "");
   const [run] = await db.select().from(agentRuns).where(eq(agentRuns.id, runId));
@@ -630,6 +707,10 @@ export async function approveMateriality(engagementId: string, note: string): Pr
   const who = await actor();
   const blocked = deny(who.authority, ["gcae"], "Only the Group Chief Audit Executive approves materiality and thresholds.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { engagementId });
+    if (hidden) return hidden;
+  }
   if (!note.trim()) return { ok: false, error: "Record why this materiality is appropriate. A silent approval is not an approval." };
   const [engagement] = await db.select().from(engagements).where(eq(engagements.id, engagementId));
   if (!engagement) return { ok: false, error: "Engagement not found." };
@@ -652,6 +733,10 @@ export async function advanceStage(engagementId: string): Promise<ActionResult> 
   const who = await actor();
   const blocked = deny(who.authority, ["gcae", "manager", "auditor"], "Stage moves are proposed by the engagement team. The orchestrator does not move them on its own.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { engagementId });
+    if (hidden) return hidden;
+  }
   const locked = await lockIfIssued(engagementId);
   if (locked) return locked;
   const [engagement] = await db.select().from(engagements).where(eq(engagements.id, engagementId));
@@ -687,6 +772,10 @@ export async function saveOpinion(engagementId: string, opinion: string, rating:
   const who = await actor();
   const blocked = deny(who.authority, ["gcae", "manager"], "The opinion draft is written by the manager or the GCAE.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { engagementId });
+    if (hidden) return hidden;
+  }
   const locked = await lockIfIssued(engagementId);
   if (locked) return locked;
   const findingRows = await db.select().from(findings).where(eq(findings.engagementId, engagementId));
@@ -709,6 +798,10 @@ export async function issueReport(engagementId: string, acknowledge: boolean, no
   const who = await actor();
   const blocked = deny(who.authority, ["gcae"], "Only the GCAE issues a report. The report assembler cannot.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { engagementId });
+    if (hidden) return hidden;
+  }
   if (!acknowledge || !note.trim()) {
     return { ok: false, error: "Issuance needs an acknowledgement that you have read the limitations, and a note. Both are stored." };
   }
@@ -746,6 +839,10 @@ export async function updatePbc(id: string, status: string, note: string): Promi
   const who = await actor();
   const blocked = deny(who.authority, ["gcae", "manager", "auditor", "qa", "owner"], "You cannot update this request.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { pbcId: id });
+    if (hidden) return hidden;
+  }
   const isAudit = ["gcae", "manager", "auditor", "qa"].includes(who.authority);
   if (!["Requested", "Received", "Clarified", "Insufficient", "Sufficient"].includes(status)) return { ok: false, error: "Unknown request status." };
   const [item] = await db.select().from(pbcRequests).where(eq(pbcRequests.id, id));
@@ -766,6 +863,10 @@ export async function checkSufficiency(pbcId: string): Promise<ActionResult> {
   const who = await actor();
   const blocked = deny(who.authority, ["gcae", "manager", "auditor", "qa"], "Sufficiency is an audit judgement. The agent only applies the written rule.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { pbcId });
+    if (hidden) return hidden;
+  }
   const [item] = await db.select().from(pbcRequests).where(eq(pbcRequests.id, pbcId));
   if (!item) return { ok: false, error: "Request not found." };
   let status = item.status;
@@ -816,6 +917,10 @@ export async function runScreener(engagementId: string): Promise<ActionResult> {
   const who = await actor();
   const blocked = deny(who.authority, AUDIT_ROLES, "Only Internal Audit can run the screener.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { engagementId });
+    if (hidden) return hidden;
+  }
   const [engagement] = await db.select().from(engagements).where(eq(engagements.id, engagementId));
   if (!engagement) return { ok: false, error: "Engagement not found." };
   const evidenceRows = await db.select().from(evidence).where(eq(evidence.engagementId, engagementId));
@@ -988,6 +1093,10 @@ export async function proposeMateriality(engagementId: string, amount: number, c
   const who = await actor();
   const blocked = deny(who.authority, ["gcae", "manager", "auditor"], "The team can propose materiality. Only the GCAE approves it.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { engagementId });
+    if (hidden) return hidden;
+  }
   if (!amount || amount < 0) return { ok: false, error: "Enter a materiality amount. Zero is not a proposal." };
   await db.update(engagements).set({
     materialityAmount: amount,
@@ -1010,6 +1119,13 @@ export async function draftWithModel(input: {
   const who = await actor();
   const blocked = deny(who.authority, ["gcae", "manager", "auditor"], "Only Internal Audit can ask a model to draft. The draft is not an opinion.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { engagementId: input.engagementId });
+    if (hidden) return hidden;
+  }
+  if (await externalModelRefused(input.engagementId)) {
+    return { ok: false, error: "This engagement is restricted. Sending its data to an external model needs the GCAE to allow external models for this engagement first." };
+  }
   const brief = await briefFor(input.engagementId, input.audience);
   if (!brief) return { ok: false, error: "Engagement not found." };
   const prompt = buildPrompt(brief);
@@ -1029,6 +1145,10 @@ export async function fileModelReply(engagementId: string, providerLabel: string
   const who = await actor();
   const blocked = deny(who.authority, ["gcae", "manager", "auditor"], "Only Internal Audit can file a model reply.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { engagementId });
+    if (hidden) return hidden;
+  }
   if (text.trim().length < 40) return { ok: false, error: "Paste the full reply. A short fragment is not a draft." };
   const brief = await briefFor(engagementId, "Audit committee");
   if (!brief) return { ok: false, error: "Engagement not found." };
@@ -1142,9 +1262,13 @@ export async function runHarness(engagementId: string): Promise<ActionResult> {
   const who = await actor();
   const blocked = deny(who.authority, ["gcae", "manager", "auditor"], "Only Internal Audit can start the harness. It still cannot issue a report.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { engagementId });
+    if (hidden) return hidden;
+  }
   const locked = await lockIfIssued(engagementId);
   if (locked) return locked;
-  const result = await executeHarness(engagementId, who.name);
+  const result = await executeHarness(engagementId, who.name, { noExternal: await externalModelRefused(engagementId) });
   refresh();
   if (!result.ok) return result;
   return { ok: true, id: result.id, message: result.message };
@@ -1154,6 +1278,10 @@ export async function decideLesson(id: string, decision: "accepted" | "rejected"
   const who = await actor();
   const blocked = deny(who.authority, ["gcae", "manager"], "A lesson is accepted by the audit manager or the GCAE. Acceptance cannot waive an iron rule.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { lessonId: id });
+    if (hidden) return hidden;
+  }
   if (!note.trim()) return { ok: false, error: "Write why you accept or reject the lesson." };
   const [lesson] = await db.select().from(lessons).where(eq(lessons.id, id));
   if (!lesson) return { ok: false, error: "Lesson not found." };
@@ -1170,6 +1298,10 @@ export async function acceptModelDraft(runId: string): Promise<ActionResult> {
   const who = await actor();
   const blocked = deny(who.authority, ["gcae", "manager"], "Only the audit manager or the GCAE can place a model draft into the opinion. It still is not issued.");
   if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { runId });
+    if (hidden) return hidden;
+  }
   const [run] = await db.select().from(agentRuns).where(eq(agentRuns.id, runId));
   if (!run || run.skill !== "model_draft" || !run.engagementId) return { ok: false, error: "That draft is not on file." };
   const draft = run.output.draft || "";

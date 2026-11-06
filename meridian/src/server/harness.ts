@@ -31,7 +31,7 @@ export type HarnessStep = {
   status: "done" | "blocked" | "suggested";
 };
 
-export async function executeHarness(engagementId: string, actorName: string) {
+export async function executeHarness(engagementId: string, actorName: string, opts: { noExternal?: boolean } = {}) {
   await ensureLessons();
   const [engagement] = await db.select().from(engagements).where(eq(engagements.id, engagementId));
   if (!engagement) return { ok: false as const, error: "Engagement not found." };
@@ -324,11 +324,11 @@ export async function executeHarness(engagementId: string, actorName: string) {
   }
 
   const status = await loadAiStatus();
-  const provider = status.active === "openai" || status.active === "claude" || status.active === "gemini" ? status.active : null;
+  const provider = opts.noExternal ? null : status.active === "openai" || status.active === "claude" || status.active === "gemini" ? status.active : null;
   const modelName = provider === "openai" ? status.openaiModel : provider === "gemini" ? status.geminiModel : status.claudeModel;
   const modelNote = provider
     ? await interpretWithModel(engagement.code, steps, provider, modelName)
-    : { notes: ["No model is connected. Open Connect AI and connect Claude, Gemini, or ChatGPT. The specialists above still ran in code."], model: "", label: "Model" };
+    : { notes: [opts.noExternal ? "External model skipped: this engagement is restricted and the GCAE has not allowed external models for it. The specialists above still ran in code." : "No model is connected. Open Connect AI and connect Claude, Gemini, or ChatGPT. The specialists above still ran in code."], model: "", label: "Model" };
   if (modelNote.notes.length) {
     steps.push({
       agent: modelNote.label,
@@ -366,6 +366,7 @@ export async function executeHarness(engagementId: string, actorName: string) {
     beforeState: null,
     afterState: harnessId,
     detail: steps.map((step) => `${step.agent}: ${step.summary}`).join(" | ").slice(0, 500),
+    engagementId,
   });
 
   return { ok: true as const, id: harnessId, steps, message: "Harness complete. Nothing was issued." };

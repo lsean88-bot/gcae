@@ -7,6 +7,7 @@ import { weakensIronRule } from "@/lib/lessons";
 import { buildPrompt } from "@/lib/reports";
 import { emptyImpacts, scoreImpacts } from "@/lib/scoring";
 import { auditApi, type ApiActor } from "@/server/api-tokens";
+import { restrictedEngagementIds } from "@/server/access";
 import { briefFor } from "@/server/brief";
 
 export type DraftResult = { status: number; body: Record<string, unknown> };
@@ -18,9 +19,13 @@ export const FRAUD_CONCLUSION = /fraud (was|has been|is) (committed|confirmed|pr
 const STR_CAP = 8000;
 const str = (v: unknown, cap = STR_CAP) => (typeof v === "string" ? v.trim().slice(0, cap) : "");
 
-async function engagementOpen(engagementId: string) {
+async function engagementOpen(engagementId: string, actor: ApiActor) {
   const [engagement] = await db.select().from(engagements).where(eq(engagements.id, engagementId));
   if (!engagement) return { error: refuse(404, "Engagement not found.") };
+  if ((await restrictedEngagementIds()).has(engagementId)) {
+    await auditApi(actor.actorLabel, "Claude token use denied", "engagement", engagementId, "Draft refused: restricted engagement. Tokens never see restricted engagements.", "denied");
+    return { error: refuse(404, "Engagement not found.") };
+  }
   if (engagement.status === "Issued" || engagement.gcaeApproved) {
     return { error: refuse(409, "This report is issued and locked. The GCAE must reopen it before the file can change.") };
   }
@@ -29,7 +34,7 @@ async function engagementOpen(engagementId: string) {
 
 export async function draftFinding(actor: ApiActor, body: Record<string, unknown>): Promise<DraftResult> {
   const engagementId = str(body.engagementId, 80);
-  const gate = await engagementOpen(engagementId);
+  const gate = await engagementOpen(engagementId, actor);
   if (gate.error) return gate.error;
   const engagement = gate.engagement!;
 
@@ -40,7 +45,9 @@ export async function draftFinding(actor: ApiActor, body: Record<string, unknown
   if (!title || !condition || evidenceIds.length === 0) return refuse(422, "A finding needs a title, a condition, and at least one evidence id. No evidence, no finding.");
   if (!rootCause) return refuse(422, "Root cause is empty. Use a labelled placeholder such as [ROOT CAUSE TO BE CONFIRMED WITH MANAGEMENT]. Do not invent one.");
 
-  const evidenceRows = await db.select().from(evidence);
+  const restrictedIds = await restrictedEngagementIds();
+  // Evidence from a restricted engagement is reported exactly like an id that does not exist.
+  const evidenceRows = (await db.select().from(evidence)).filter((row) => !row.engagementId || !restrictedIds.has(row.engagementId));
   const cited = evidenceIds.map((id) => evidenceRows.find((row) => row.id === id));
   const missing = evidenceIds.filter((_, i) => !cited[i]);
   if (missing.length) return refuse(422, `These evidence ids are not on the ledger: ${missing.join(", ")}. Register the file before you cite it.`);
@@ -119,7 +126,7 @@ export async function draftFinding(actor: ApiActor, body: Record<string, unknown
 }
 
 export async function draftReportText(actor: ApiActor, engagementId: string, body: Record<string, unknown>): Promise<DraftResult> {
-  const gate = await engagementOpen(engagementId);
+  const gate = await engagementOpen(engagementId, actor);
   if (gate.error) return gate.error;
   const text = str(body.text, 20000);
   if (text.length < 40) return refuse(422, "The draft is too short to be a draft.");
@@ -166,6 +173,10 @@ export async function proposeLesson(actor: ApiActor, body: Record<string, unknow
   if (engagementId) {
     const [found] = await db.select().from(engagements).where(eq(engagements.id, engagementId));
     if (!found) return refuse(404, "Engagement not found.");
+    if ((await restrictedEngagementIds()).has(engagementId)) {
+      await auditApi(actor.actorLabel, "Claude token use denied", "engagement", engagementId, "Lesson refused: restricted engagement.", "denied");
+      return refuse(404, "Engagement not found.");
+    }
   }
   const id = uid("lsn");
   await db.insert(lessons).values({ id, engagementId: engagementId || null, title, observation, change, area: str(body.area, 80) || "general", ironRule, status: "proposed", createdAt: todayIso(), decidedBy: null, decisionNote: null });

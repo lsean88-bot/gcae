@@ -33,6 +33,9 @@ The word `aibagent` in an earlier note was a typographical error for “AI agent
 - A model draft that contains a figure absent from the source must not be saved into the opinion.
 - Do not claim production readiness of any earlier Claude plugin package. This web app’s UAT is separate and is recorded on the UAT evidence page.
 - Demonstration data is not a live population.
+- Claude connector (Phase 3): a personal access token lets a model read and file drafts only. It acts with its owner's authority, never issues, approves or closes, and refuses figures not in the source. Decisions taken by the GCAE: QA tokens are read-only in effect (QA cannot draft); API drafts are saved with status "Draft"; the rate limit (120 a minute per token) is in memory for the single app instance; the GCAE can revoke any person's token.
+- Restricted engagements: only the GCAE sets or lifts the restriction and grants access (table engagement_access). Without access a person sees no trace of the engagement or its records, and direct links behave as not found. One gate does this: `src/server/access.ts`, used by the UI data loader (`bundleFor` in `src/lib/data.ts`), by every mutation on engagement records (`guardRecord`) and by the API. Claude tokens never see restricted engagements, even the GCAE's. External model calls on a restricted engagement are refused unless the GCAE ticks "allow external AI models" for that engagement.
+- Evidence body over the API (`GET evidence/{id}?include=body`) is allowed only for the GCAE, the audit manager, or the auditor who leads that engagement (`engagements.lead_id`). Everyone else gets metadata.
 
 ## 3. Target way of working
 

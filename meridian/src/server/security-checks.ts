@@ -2,7 +2,10 @@ import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
 import { eq, inArray } from "drizzle-orm";
 import { db, pool } from "@/db";
-import { agentRuns, apiTokens, engagements, evidence, findings, lessons, loginAttempts, people, sessions } from "@/db/schema";
+import { actions, agentRuns, auditEvents, apiTokens, engagementAccess, engagements, evidence, findings, lessons, loginAttempts, pbcRequests, people, sessions, testRuns } from "@/db/schema";
+import { bundleFor } from "@/lib/data";
+import { engagementForObject, guardRecord } from "@/server/access";
+import { getEngagement as apiGetEngagement, getEvidence as apiGetEvidence, getFinding as apiGetFinding, listActions as apiListActions, listEngagements as apiListEngagements, listEvidence as apiListEvidence, listFindings as apiListFindings, listTestRuns as apiListTestRuns } from "@/server/api-read";
 import { weakensIronRule } from "@/lib/lessons";
 import { draftFinding, draftReportText, proposeLesson } from "@/server/api-drafts";
 import { authenticateBearer, createToken, hashApiToken, tokenCreationRefusal, type ApiActor } from "@/server/api-tokens";
@@ -225,6 +228,99 @@ export async function securityChecks(): Promise<SecurityCase[]> {
   const legit = ["Never close a finding without evidence", "Use bypass lists carefully"].map(weakensIronRule);
   const weakening = ["Agents may bypass QA", "Auto-approve materiality", "Waive the evidence step to go faster", "Issue without GCAE review"].map(weakensIronRule);
   check("T-39", "Lesson screen passes legitimate rule-keeping sentences and rejects rule-relaxing ones", legit.every((x) => !x) && weakening.every(Boolean), `legit flagged=${legit.join(",")} relaxing flagged=${weakening.join(",")}`);
+
+
+  // T-40 to T-44: restricted engagements and the evidence-body rule.
+  const RID = "eng-uat-restricted";
+  const [srcEng] = await db.select().from(engagements).where(eq(engagements.id, "eng-ap"));
+  const [srcFinding] = await db.select().from(findings).where(eq(findings.engagementId, "eng-ap"));
+  const [srcEv] = await db.select().from(evidence).where(eq(evidence.engagementId, "eng-ap"));
+  const [srcTest] = await db.select().from(testRuns).where(eq(testRuns.engagementId, "eng-ap"));
+  const [srcPbc] = await db.select().from(pbcRequests).where(eq(pbcRequests.engagementId, "eng-ap"));
+  const [srcAction] = await db.select().from(actions).where(eq(actions.engagementId, "eng-ap"));
+  const [outsider] = await db.select().from(people).where(eq(people.id, "p-aud2"));
+  const [member] = await db.select().from(people).where(eq(people.id, "p-aud1"));
+  const cleanRestricted = async () => {
+    for (const [table, col] of [[findings, findings.engagementId], [evidence, evidence.engagementId], [testRuns, testRuns.engagementId], [pbcRequests, pbcRequests.engagementId], [actions, actions.engagementId], [agentRuns, agentRuns.engagementId], [lessons, lessons.engagementId], [engagementAccess, engagementAccess.engagementId]] as const) {
+      await db.delete(table).where(eq(col, RID));
+    }
+    await db.delete(engagements).where(eq(engagements.id, RID));
+  };
+  await cleanRestricted();
+  await db.insert(engagements).values({ ...srcEng, id: RID, code: "UAT-RESTRICTED", title: "UAT restricted engagement", restricted: true, allowExternalModel: false, status: "Fieldwork", gcaeApproved: false });
+  await db.insert(findings).values({ ...srcFinding, id: "f-uat-restricted", code: "F-UAT-R", engagementId: RID });
+  await db.insert(evidence).values({ ...srcEv, id: "ev-uat-restricted", engagementId: RID });
+  await db.insert(testRuns).values({ ...srcTest, id: "tr-uat-restricted", engagementId: RID });
+  await db.insert(pbcRequests).values({ ...srcPbc, id: "pbc-uat-restricted", engagementId: RID });
+  await db.insert(actions).values({ ...srcAction, id: "act-uat-restricted", engagementId: RID, findingId: "f-uat-restricted" });
+  await db.insert(agentRuns).values({ id: "ar-uat-restricted", agent: "Report assembler", skill: "model_draft", engagementId: RID, trigger: "uat", status: "suggested", startedAt: "2026-01-01", summary: "uat", reasoning: [], inputs: {}, output: { draft: "x" } });
+  await db.insert(lessons).values({ id: "lsn-uat-restricted", engagementId: RID, title: "UAT restricted lesson", observation: "o", change: "Record the count.", area: "testing", ironRule: "An evidence gap is not a pass.", status: "proposed", createdAt: "2026-01-01", decidedBy: null, decisionNote: null });
+  await db.insert(engagementAccess).values({ engagementId: RID, personId: member.id, grantedBy: "p-gcae", grantedAt: "2026-01-01" });
+
+  const seesAny = (b: Awaited<ReturnType<typeof bundleFor>>) => b.engagementRows.some((r) => r.id === RID) || b.findingRows.some((r) => r.engagementId === RID) || b.evidenceRows.some((r) => r.engagementId === RID) || b.testRows.some((r) => r.engagementId === RID) || b.actionRows.some((r) => r.engagementId === RID) || b.pbcRows.some((r) => r.engagementId === RID) || b.runRows.some((r) => r.engagementId === RID);
+  const seesAll = (b: Awaited<ReturnType<typeof bundleFor>>) => b.engagementRows.some((r) => r.id === RID) && b.findingRows.some((r) => r.engagementId === RID) && b.evidenceRows.some((r) => r.engagementId === RID) && b.testRows.some((r) => r.engagementId === RID) && b.actionRows.some((r) => r.engagementId === RID) && b.pbcRows.some((r) => r.engagementId === RID) && b.runRows.some((r) => r.engagementId === RID);
+  const bOut = await bundleFor(outsider);
+  const bMember = await bundleFor(member);
+  const bGcae = await bundleFor(gcaePerson);
+  check("T-40", "UI data path: a person without access sees no trace of a restricted engagement; a granted person and the GCAE see it all", !seesAny(bOut) && seesAll(bMember) && seesAll(bGcae) && bOut.engagementRows.length === bGcae.engagementRows.length - 1, `outsider sees any=${seesAny(bOut)} member sees all=${seesAll(bMember)} gcae sees all=${seesAll(bGcae)}`);
+
+  // Audit-log events about the restricted engagement's lesson decision, action and finding. Written the way log() writes them.
+  const marker = `uat-leak-${Date.now()}`;
+  const eventObjects: [string, string][] = [["lesson", "lsn-uat-restricted"], ["action", "act-uat-restricted"], ["finding", "f-uat-restricted"]];
+  for (const [type, oid] of eventObjects) {
+    await db.insert(auditEvents).values({ id: `log-${marker}-${type}`, at: "2026-01-01", actor: "UAT", action: `UAT ${type} event`, objectType: type, objectId: oid, beforeState: null, afterState: null, detail: `Free-text note ${marker}`, engagementId: await engagementForObject(type, oid) });
+  }
+  // An event of an unmapped type is still hidden through the engagement_id stamp.
+  await db.insert(auditEvents).values({ id: `log-${marker}-other`, at: "2026-01-01", actor: "UAT", action: "UAT other event", objectType: "unmapped", objectId: "x-unmapped", beforeState: null, afterState: null, detail: `Free-text note ${marker}`, engagementId: RID });
+  const evOut = (await bundleFor(outsider)).eventRows.filter((e) => e.detail.includes(marker));
+  const evGcae = (await bundleFor(gcaePerson)).eventRows.filter((e) => e.detail.includes(marker));
+  const stamped = (await Promise.all(eventObjects.map(([t, o]) => engagementForObject(t, o)))).every((x) => x === RID);
+  const oracle = await draftFinding(actor, { ...goodBody, evidenceIds: ["ev-uat-restricted"] });
+  const oracleMissing = await draftFinding(actor, { ...goodBody, evidenceIds: ["ev-does-not-exist"] });
+  check("T-45", "Audit log: a person without access sees no lesson, action, finding or other event of a restricted engagement; the GCAE sees all four; events are stamped with the engagement; citing hidden evidence looks like a missing id", evOut.length === 0 && evGcae.length === 4 && stamped && oracle.status === 422 && String(oracle.body.error).replace("ev-uat-restricted", "X") === String(oracleMissing.body.error).replace("ev-does-not-exist", "X"), `non-member sees ${evOut.length} of 4, gcae sees ${evGcae.length}, stamped=${stamped}, oracle same error=${String(oracle.body.error).replace("ev-uat-restricted", "X") === String(oracleMissing.body.error).replace("ev-does-not-exist", "X")}`);
+
+  const refs = [{ engagementId: RID }, { findingId: "f-uat-restricted" }, { testId: "tr-uat-restricted" }, { runId: "ar-uat-restricted" }, { pbcId: "pbc-uat-restricted" }, { actionId: "act-uat-restricted" }];
+  const outsiderRefused = await Promise.all(refs.map(async (ref) => (await guardRecord(outsider, ref))?.error === "Not found."));
+  const memberAllowed = await Promise.all(refs.map(async (ref) => (await guardRecord(member, ref)) === null));
+  const gcaeAllowed = (await guardRecord(gcaePerson, { engagementId: RID })) === null;
+  const mutationFns = ["registerEvidence", "runTest", "reperformTest", "decideTest", "saveFinding", "saveAction", "decideAgentRun", "approveMateriality", "advanceStage", "saveOpinion", "issueReport", "reopenReport", "updatePbc", "checkSufficiency", "runScreener", "proposeMateriality", "draftWithModel", "fileModelReply", "runHarness", "acceptModelDraft", "decideLesson"];
+  const mutSrc = readFileSync(join(process.cwd(), "src", "server", "mutations.ts"), "utf8");
+  const unguarded = mutationFns.filter((fn) => { const i = mutSrc.indexOf(`export async function ${fn}(`); return i < 0 || !mutSrc.slice(i, i + 1500).includes("guardRecord(who"); });
+  check("T-41", "Every mutation on engagement records refuses a person without access as 'Not found'; members and the GCAE pass", outsiderRefused.every(Boolean) && memberAllowed.every(Boolean) && gcaeAllowed && unguarded.length === 0, `outsider refused=${outsiderRefused.join(",")} member allowed=${memberAllowed.every(Boolean)} unguarded=${unguarded.join(",") || "none"}`);
+
+  const gcaeActor: ApiActor = { person: gcaePerson, authority: "gcae", tokenId: "tok-uat", tokenName: "uat-token", scopes: ["read", "draft"], actorLabel: "UAT via Claude token uat-token" };
+  const apiEngs = await apiListEngagements();
+  const apiFindings = await apiListFindings(RID);
+  const apiAll = await apiListFindings();
+  const apiEv = await apiListEvidence();
+  const apiAct = await apiListActions({});
+  const apiTests = await apiListTestRuns();
+  const direct = await Promise.all([apiGetEngagement(RID, gcaeActor), apiGetFinding("f-uat-restricted", gcaeActor), apiGetEvidence("ev-uat-restricted", false, gcaeActor)]);
+  const draftR = await draftFinding(gcaeActor, { ...goodBody, engagementId: RID, evidenceIds: ["ev-uat-restricted"] });
+  const reportR = await draftReportText(gcaeActor, RID, { text: "Draft for review only. The file records the control objective and the limitations as written." });
+  const lessonR = await proposeLesson(gcaeActor, { title: "t", observation: "o", change: "Record the count.", ironRule: "An evidence gap is not a pass.", engagementId: RID });
+  const denied = await db.select().from(engagements).where(eq(engagements.id, RID));
+  check("T-42", "Claude tokens never see a restricted engagement or its records, even as the GCAE: lists omit, ids 404, drafts refused", denied.length === 1 && !apiEngs.some((e) => e.id === RID) && apiFindings.length === 0 && !apiAll.some((f) => f.engagementId === RID) && !apiEv.some((e) => (e as { engagementId?: string }).engagementId === RID) && !apiAct.some((a) => a.engagementId === RID) && !apiTests.some((t) => t.engagementId === RID) && direct[0] === null && direct[1] === null && direct[2].kind === "notfound" && draftR.status === 404 && reportR.status === 404 && lessonR.status === 404, `lists clean=${!apiEngs.some((e) => e.id === RID)} direct=${direct[0] === null},${direct[1] === null},${direct[2].kind} drafts=${draftR.status},${reportR.status},${lessonR.status}`);
+
+  const accessSrc = readFileSync(join(process.cwd(), "src", "server", "mutations.ts"), "utf8");
+  const gcaeFns = ["setEngagementRestricted", "grantEngagementAccess", "revokeEngagementAccess"];
+  const usesGcaeOnly = gcaeFns.every((fn) => { const i = accessSrc.indexOf(`export async function ${fn}(`); return i >= 0 && accessSrc.slice(i, i + 300).includes("await gcaeOnly()"); });
+  const gateText = accessSrc.slice(accessSrc.indexOf("async function gcaeOnly"), accessSrc.indexOf("async function gcaeOnly") + 320);
+  const dup = await db.insert(engagementAccess).values({ engagementId: RID, personId: member.id, grantedBy: "p-gcae", grantedAt: "x" }).then(() => false, () => true);
+  check("T-43", "Only the GCAE can restrict or grant; every other authority is refused; an access pair is unique", usesGcaeOnly && gateText.includes('["gcae"]') && ["manager", "auditor", "qa", "owner", "executive", "none", "locked"].every((a) => denyAuthority(a, ["gcae"], "x") !== null) && denyAuthority("gcae", ["gcae"], "x") === null && dup, `uses gcae-only gate=${usesGcaeOnly} duplicate pair rejected=${dup}`);
+
+  const [leadEng] = (await db.select().from(engagements)).filter((e) => !e.restricted && ["p-aud1", "p-aud2", "p-frd"].includes(e.leadId));
+  const [leadEv] = leadEng ? await db.select().from(evidence).where(eq(evidence.engagementId, leadEng.id)) : [];
+  const lead = leadEng ? (await db.select().from(people).where(eq(people.id, leadEng.leadId)))[0] : undefined;
+  const otherAud = (await db.select().from(people)).find((p) => p.authority === "auditor" && p.id !== leadEng?.leadId);
+  const [mgr] = await db.select().from(people).where(eq(people.id, "p-mgr"));
+  const [qaP] = await db.select().from(people).where(eq(people.id, "p-qa"));
+  const as = (person: typeof gcaePerson): ApiActor => ({ ...gcaeActor, person, authority: person.authority });
+  const body = async (person: typeof gcaePerson) => (leadEv ? (await apiGetEvidence(leadEv.id, true, as(person))).kind : "none");
+  const kinds = leadEv && lead && otherAud ? { gcae: await body(gcaePerson), manager: await body(mgr), lead: await body(lead), other: await body(otherAud), qa: await body(qaP), meta: (await apiGetEvidence(leadEv.id, false, as(otherAud))).kind } : null;
+  check("T-44", "Evidence body over the API: GCAE, manager and the engagement's lead auditor only; others get metadata and a refusal", Boolean(kinds) && kinds!.gcae === "ok" && kinds!.manager === "ok" && kinds!.lead === "ok" && kinds!.other === "forbidden" && kinds!.qa === "forbidden" && kinds!.meta === "ok", `body: ${kinds ? JSON.stringify(kinds) : "no fixture"}`);
+
+  await cleanRestricted();
 
   // Clean up the test rows. The audit log keeps its events.
   if (draftedId) await db.delete(findings).where(eq(findings.id, draftedId));
