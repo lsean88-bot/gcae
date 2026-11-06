@@ -1,0 +1,5 @@
+# Local test without Cloudflare:
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml --env-file .env up -d db app caddy
+services:
+  cloudflared:
+    profiles: ["tunnel-disabled"]

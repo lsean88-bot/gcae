@@ -1,0 +1,11 @@
+node_modules
+.next
+.env
+.env.*
+.git
+deploy
+docs
+plugin
+*.tsbuildinfo
+npm-debug.log*
+mcp

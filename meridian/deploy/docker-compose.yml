@@ -1,0 +1,106 @@
+# Run from meridian/deploy:  docker compose --env-file .env up -d
+# No host ports except app on 127.0.0.1:3000 (health only). Staff reach https://${MERIDIAN_IP} via Cloudflare WARP + tunnel private route.
+name: meridian
+networks:
+  meridian_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${MERIDIAN_SUBNET:-172.30.0.0/24}
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-meridian_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-meridian}
+    networks: [meridian_net]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # No ports published: reachable only on the compose network.
+
+  app:
+    build:
+      context: ..
+    image: meridian-app:local
+    restart: unless-stopped
+    networks: [meridian_net]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-meridian_app}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-meridian}
+      APP_SECRET: ${APP_SECRET:?set APP_SECRET in deploy/.env}
+      # All traffic arrives via cloudflared -> Caddy, so the client IP is not known.
+      # Keep 0: with 1, every user would share one IP and the per-IP lock could block everyone.
+      # The per-role lockout still applies; user identity is in Cloudflare Zero Trust logs.
+      TRUST_PROXY: "0"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_MODEL: ${AI_MODEL:-}
+    ports:
+      - "127.0.0.1:3000:3000"   # host-local only (for health checks/debug); Caddy proxies to app:3000 on the internal network
+
+  migrate:
+    profiles: ["setup"]
+    build:
+      context: ..
+      target: tools
+    image: meridian-tools:local
+    networks: [meridian_net]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-meridian_app}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-meridian}
+      APP_SECRET: ${APP_SECRET:?set APP_SECRET in deploy/.env}
+    # Default: schema push + audit-log hardening. Override for other tasks, e.g.
+    #   docker compose --profile setup run --rm migrate npm run setup:passwords
+    #   docker compose --profile setup run --rm migrate npm run uat
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      MERIDIAN_IP: ${MERIDIAN_IP:-172.30.0.10}
+    networks:
+      meridian_net:
+        ipv4_address: ${MERIDIAN_IP:-172.30.0.10}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    # Publishes NO host port: reachable only through the Cloudflare tunnel private route.
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN in deploy/.env}
+    networks: [meridian_net]
+    depends_on:
+      - caddy
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

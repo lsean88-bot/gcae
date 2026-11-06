@@ -80,5 +80,10 @@ This plugin's own skills: `audit-second-brain` (catalog and recall), `document-r
 - When both `group-cae-reporting` and `board-chairman-briefing` are requested, deliver a paired output: full report and separate Board/Chairman briefing note, findings ordered by IA's own materiality view.
 - Verification means checking actual output against a known-positive and known-negative case, not absence of a crash.
 
-### 7.4 User preferences observed
+### 7.4 Building audit software (Meridian, Nov 2026)
+- Every build phase gets an independent QA agent separate from the builder; commit only after QA findings are fixed. QA found real defects in every phase (auth gaps, audit-log leak, AC-pack leak). (Meridian Phases 1, 3, A, strategic)
+- Confidentiality masking must use the global restricted set, never the viewer's already-filtered data; test by string-searching every output (page, JSON snapshot, Excel). (Meridian restricted engagements + AC pack)
+- Never commit secrets: strip passwords before the first commit, since git history keeps them. Shipped/UAT code must contain no path that disables a hardening trigger. (Meridian Phase 1, strategic)
+
+### 7.5 User preferences observed
 - Auditee-facing material: clean, objective, simple language, each issue pinned to a worksheet.

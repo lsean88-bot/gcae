@@ -1,0 +1,12 @@
+# HTTPS for the private IP, certificate from Caddy's internal CA (staff trust meridian-root-ca.crt).
+# Caddy sets X-Forwarded-For from the real TCP peer; no trusted_proxies is configured, so any
+# client-supplied X-Forwarded-For is discarded. Security headers come from Next.js (not duplicated here).
+{
+	admin off
+	skip_install_trust
+}
+
+https://{$MERIDIAN_IP:172.30.0.10} {
+	tls internal
+	reverse_proxy app:3000
+}
