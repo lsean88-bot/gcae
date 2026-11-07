@@ -5,7 +5,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 // Optional first argument: path to the server file to test (default dist/index.js). Used for the bundled plugin copy.
 const SERVER = process.argv[2] || "dist/index.js";
 
-const EXPECTED = ["list_engagements", "get_engagement", "list_findings", "get_finding", "list_actions", "list_evidence", "get_evidence", "list_risks", "list_test_runs", "get_briefing", "list_lessons", "draft_finding", "draft_report_text", "propose_lesson"];
+const EXPECTED = ["list_engagements", "get_engagement", "list_findings", "get_finding", "list_actions", "list_evidence", "get_evidence", "list_risks", "list_test_runs", "get_briefing", "list_lessons", "draft_finding", "draft_report_text", "propose_lesson", "list_analytics_runs", "get_analytics_run", "run_analytics", "lint_text", "get_audit_plan", "get_risk_register"];
 const FORBIDDEN = /issue|approve|rating|threshold|delete|overwrite|close|conclude|waive|clear|qa\b|decide|accept|reopen|update|set_|remove/i;
 
 const transport = new StdioClientTransport({ command: process.execPath, args: [SERVER], env: { ...process.env, MERIDIAN_URL: "https://127.0.0.1:1", MERIDIAN_TOKEN: "mt_smoke_not_a_real_token_0000000000" } });

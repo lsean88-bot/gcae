@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { readFileSync, statSync } from "node:fs";
+import { basename } from "node:path";
 import { z } from "zod";
 import { configFromEnv, request } from "./client.js";
 
 const cfg = configFromEnv();
-const server = new McpServer({ name: "meridian", version: "1.0.0" });
+const server = new McpServer({ name: "meridian", version: "1.1.0" });
 
 const RULES =
   "Iron rules: read and draft only. Only the GCAE issues reports, approves materiality or ratings, changes thresholds, closes actions, clears QA or concludes on fraud; no tool here can. " +
@@ -75,5 +77,39 @@ server.registerTool(
   },
   (args) => post("lessons", args),
 );
+
+// Analytics, guardrails, plan and ERM
+const MAX_FILE = 20 * 1024 * 1024;
+function readLocal(path: string, sheet?: string) {
+  const st = statSync(path);
+  if (!st.isFile()) throw new Error(`Not a file: ${basename(path)}`);
+  if (st.size > MAX_FILE) throw new Error(`${basename(path)} is larger than 20 MB.`);
+  return { name: basename(path), contentBase64: readFileSync(path).toString("base64"), ...(sheet ? { sheet } : {}) };
+}
+server.registerTool("list_analytics_runs", { description: `List saved analytics runs (test type, input file hash, row count, who ran it). Read only. Restricted engagements are never returned. ${RULES}`, inputSchema: {} }, () => get("analytics/runs"));
+server.registerTool("get_analytics_run", { description: `Get one saved analytics run with its full result. Read only. ${RULES}`, inputSchema: { runId: z.string() } }, ({ runId }) => get(`analytics/runs/${idPart(runId)}`));
+server.registerTool(
+  "run_analytics",
+  {
+    description: `Run a deterministic analytics test (profile, benford, duplicates, reconcile) on a LOCAL file (csv or xlsx). This server reads the file on your PC and sends it to Meridian, which saves a read-only run. It is a staged DRAFT result: it approves, rates and issues nothing, and a person interprets it in the app. Column names must exist in the file. ${RULES}`,
+    inputSchema: {
+      filePath: z.string().describe("Absolute path of the file on this computer"),
+      test: z.enum(["profile", "benford", "duplicates", "reconcile"]),
+      params: z.object({ column: z.string().optional(), keyCols: z.array(z.string()).optional(), keyCol: z.string().optional(), amountCol: z.string().optional(), keyColB: z.string().optional(), amountColB: z.string().optional(), tolerance: z.number().optional() }).optional().describe("benford: column. duplicates: keyCols. reconcile: keyCol, amountCol, keyColB, amountColB, tolerance"),
+      sheet: z.string().optional().describe("Sheet name for xlsx"),
+      filePathB: z.string().optional().describe("Second file, for reconcile"),
+      sheetB: z.string().optional(),
+      engagementId: z.string().optional().describe("Link the run to an engagement"),
+    },
+  },
+  ({ filePath, test, params, sheet, filePathB, sheetB, engagementId }) =>
+    run(() => {
+      const body = { test, params: params || {}, engagementId, fileA: readLocal(filePath, sheet), ...(filePathB ? { fileB: readLocal(filePathB, sheetB) } : {}) };
+      return request(cfg, "POST", "analytics/runs", undefined, body);
+    }),
+);
+server.registerTool("lint_text", { description: `Check draft text against Meridian's iron rules (for example a numeric confidence claim or a statement that fraud is proven). Read only: returns violations and stores nothing. Run it on every draft before filing. ${RULES}`, inputSchema: { text: z.string().min(1), evidenceState: z.string().optional().describe("Where the draft sits on the fraud ladder; leave off for the lowest rung") } }, ({ text, evidenceState }) => post("guardrails/lint", { text, evidenceState }));
+server.registerTool("get_audit_plan", { description: `Get the annual risk-based audit plan and its items (latest plan by default). Read only; plans are approved only by the GCAE in the app. Items on restricted engagements are withheld. ${RULES}`, inputSchema: { year: z.number().int().optional(), planId: z.string().optional() } }, ({ year, planId }) => get("plan", { year: year === undefined ? undefined : String(year), planId }));
+server.registerTool("get_risk_register", { description: `Get the ERM risk register with inherent and residual scores, the top risks and a 5x5 heat map. A residual that was never assessed is reported as not assessed, never guessed. Read only. ${RULES}`, inputSchema: { view: z.enum(["inherent", "residual"]).optional(), top: z.number().int().min(1).max(50).optional() } }, ({ view, top }) => get("risk-register", { view, top: top === undefined ? undefined : String(top) }));
 
 await server.connect(new StdioServerTransport());
