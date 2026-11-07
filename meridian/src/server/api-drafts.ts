@@ -3,10 +3,12 @@ import { db } from "@/db";
 import { agentRuns, engagements, evidence, findings, lessons, testRuns, type ImpactMap } from "@/db/schema";
 import { figuresNotInSource } from "@/lib/ai";
 import { todayIso, uid } from "@/lib/format";
+import { lintText } from "@/lib/iron-rules";
 import { weakensIronRule } from "@/lib/lessons";
 import { buildPrompt } from "@/lib/reports";
 import { emptyImpacts, scoreImpacts } from "@/lib/scoring";
 import { auditApi, type ApiActor } from "@/server/api-tokens";
+import { capFindingSeverity, stageRun } from "@/server/guardrail";
 import { restrictedEngagementIds } from "@/server/access";
 import { briefFor } from "@/server/brief";
 
@@ -91,12 +93,16 @@ export async function draftFinding(actor: ApiActor, body: Record<string, unknown
   const text = [title, condition, rootCause, likelihoodRationale, ...Object.values(fields), ...fiveWhys, ...Object.values(impacts).map((c) => c.note)].filter(Boolean).join("\n");
 
   if (FRAUD_CONCLUSION.test(text)) return refuse(422, "A fraud indicator is a red flag, not a finding of fraud. Remove any statement that fraud is confirmed or that a person did it.");
+  // Iron rules: fraud ladder and numeric-confidence wording, same lint as staged agent drafts.
+  const lint = lintText(text);
+  if (lint.length) return refuse(422, `Guardrail: ${lint[0].message}`);
   // Figure guard: every figure must appear in the cited evidence, the engagement file or its test workpapers.
   const source = JSON.stringify([engagement, cited, runs]);
   const novel = figuresNotInSource(source, text);
   if (novel.length) return refuse(422, `The draft contains figures that are not in the source file: ${novel.join(", ")}. Remove them or cite evidence that holds them.`);
 
   const id = uid("f");
+  const capped = await capFindingSeverity(scored.band, cited.filter((row): row is NonNullable<typeof row> => Boolean(row)), testRunId || null, engagementId, scored.score);
   await db.insert(findings).values({
     id,
     code: `F-${uid("n").slice(-4).toUpperCase()}`,
@@ -106,23 +112,24 @@ export async function draftFinding(actor: ApiActor, body: Record<string, unknown
     condition,
     rootCause,
     fiveWhys,
-    riskRating: scored.band,
+    riskRating: capped.band,
     likelihood,
     likelihoodRationale,
     impacts,
-    priorityScore: scored.score,
-    priorityBand: scored.band,
+    priorityScore: capped.score ?? scored.score,
+    priorityBand: capped.band,
+    severityFlag: capped.flag,
     highestImpact: scored.highest,
     highestDimension: scored.highestDimension,
-    valueLevel: scored.band,
+    valueLevel: capped.band,
     managementPosition: "Pending",
     evidenceIds: evidenceIds.join(", "),
     testRunId: testRunId || null,
     status: "Draft",
     ...fields,
   });
-  await auditApi(actor.actorLabel, "Drafted finding (Claude token)", "finding", id, `${title} drafted as Draft, computed ${scored.score} ${scored.band}. A person must review it.`, "Draft");
-  return { status: 201, body: { ok: true, id, status: "Draft", priorityScore: scored.score, priorityBand: scored.band, message: "Draft saved. The priority was computed by Meridian. A person must review it; it is not issued." } };
+  await auditApi(actor.actorLabel, "Drafted finding (Claude token)", "finding", id, `${title} drafted as Draft, computed ${scored.score} ${capped.band}.${capped.flag ? ` Critical capped at High: ${capped.flag}.` : ""} A person must review it.`, "Draft");
+  return { status: 201, body: { ok: true, id, status: "Draft", priorityScore: capped.score ?? scored.score, priorityBand: capped.band, severityFlag: capped.flag, message: "Draft saved. The priority was computed by Meridian. A person must review it; it is not issued." } };
 }
 
 export async function draftReportText(actor: ApiActor, engagementId: string, body: Record<string, unknown>): Promise<DraftResult> {
@@ -137,7 +144,7 @@ export async function draftReportText(actor: ApiActor, engagementId: string, bod
   if (novel.length) return refuse(422, `The draft contains figures that are not in the engagement file: ${novel.join(", ")}. Remove them.`);
   const id = uid("ar");
   const note = "Draft text filed through a Claude token. Figures checked against the engagement file. Scores, evidence and issuance were not changed.";
-  await db.insert(agentRuns).values({
+  await stageRun({
     id,
     agent: "Report assembler",
     skill: "model_draft",
@@ -156,7 +163,7 @@ export async function draftReportText(actor: ApiActor, engagementId: string, bod
     limitations: note,
     decidedBy: null,
     decisionNote: null,
-  });
+  }, { texts: [text] });
   await auditApi(actor.actorLabel, "Filed report draft (Claude token)", "agent", id, `Draft text filed for ${engagementId} as a suggestion. Not issued.`, "suggested");
   return { status: 201, body: { ok: true, id, status: "suggested", message: "Draft filed as a suggestion for human review. It is not an issued opinion and is not in the opinion field until a manager or the GCAE accepts it." } };
 }

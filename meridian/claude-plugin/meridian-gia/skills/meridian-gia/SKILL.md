@@ -34,7 +34,14 @@ Use it for audit assignment understanding, evidence registration checks, attribu
 
 When the `meridian` MCP server is connected (this plugin starts it; setup is in `docs/LAPTOP-QUICKSTART.md`), prefer its tools to guessing from memory. Meridian runs on the owner's own laptop at http://127.0.0.1:3000 and the server uses the owner's personal access token from the `MERIDIAN_TOKEN` environment variable, so you act with that person's authority, and every write is logged as "<person> via Claude token <name>". Never ask the user to paste the token into the chat and never write it into a file.
 
-Read tools: `list_engagements`, `get_engagement` (materiality, stage, gate blockers), `list_findings`, `get_finding`, `list_actions`, `list_evidence` (metadata, hash, reliability), `get_evidence` (one record; raw text only with `includeBody`), `list_risks`, `list_test_runs`, `get_briefing`, `list_lessons`.
+Read tools: `list_engagements`, `get_engagement` (materiality, stage, gate blockers), `list_findings`, `get_finding`, `list_actions`, `list_evidence` (metadata, hash, reliability), `get_evidence` (one record; raw text only with `includeBody`), `list_risks`, `list_test_runs`, `get_briefing`, `list_lessons`, plus the module tools below.
+
+Module tools (CGAE Command):
+- `list_analytics_runs`, `get_analytics_run`: saved analytics runs (read only).
+- `run_analytics`: give a local file path (csv or xlsx), a `test` (profile, benford, duplicates, reconcile) and `params` (benford: column; duplicates: keyCols; reconcile: keyCol, amountCol, keyColB, amountColB, tolerance, plus `filePathB`). The connector reads the file on this PC and posts it; Meridian saves a read-only run. It rates and approves nothing. Interpretation is the person's.
+- `lint_text`: returns iron-rule violations for draft text (for example a numeric confidence claim, or a statement that fraud is proven). Stores nothing. Run it on every draft before `draft_finding`, `draft_report_text` or `propose_lesson`, and fix every `block` violation.
+- `get_audit_plan` (latest plan and items; approval is the GCAE's in the app), `get_risk_register` (inherent and residual scores, top risks, heat map; an unassessed residual is stated as not assessed, never guessed).
+- Restricted engagements are enforced by the server for every token: they never appear in any tool result. Do not try to work around a refusal.
 
 Draft tools: `draft_finding`, `draft_report_text`, `propose_lesson`. These are the only writes.
 

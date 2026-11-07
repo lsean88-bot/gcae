@@ -11,7 +11,9 @@
     "setup:passwords": "tsx scripts/setup-passwords.ts",
     "db:harden": "tsx scripts/db-harden.ts",
     "db:push": "drizzle-kit push --force",
-    "uat": "tsx scripts/uat.ts"
+    "uat": "tsx scripts/uat.ts",
+    "test:rules": "tsx scripts/test-iron-rules.ts",
+    "test:analytics": "tsx scripts/test-analytics.ts"
   },
   "dependencies": {
     "dotenv": "17.3.1",

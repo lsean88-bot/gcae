@@ -35,6 +35,10 @@ import { loadAiStatus, loadProviderKey, preferProvider, removeProviderKey, saveP
 import { engagementForObject, externalModelRefused, guardRecord, hiddenEngagementIds } from "@/server/access";
 import { briefFor } from "@/server/brief";
 import { executeHarness } from "@/server/harness";
+import { WORK_TYPES } from "@/lib/chain";
+import { runChainFor, type ChainType } from "@/server/chains";
+import { acceptModelDraftAs, decideAgentRunAs } from "@/server/decisions";
+import { capFindingSeverity, overrideGuardrailAs, stageRun } from "@/server/guardrail";
 import { runSimulation } from "@/server/simulation";
 import { runUat } from "@/server/uat";
 import { scoreImpacts } from "@/lib/scoring";
@@ -323,7 +327,7 @@ export async function runTest(input: {
     deviation,
     workpaper: execution.workpaper,
   });
-  await db.insert(agentRuns).values({
+  await stageRun({
     id: uid("ar"),
     agent: "Test executor",
     skill: input.procedure,
@@ -385,7 +389,7 @@ export async function reperformTest(testId: string): Promise<ActionResult> {
     qaResult: compared.match ? "Match" : "Difference",
     qaNotes: `${compared.note} ${compared.differences.join(" ") || "Counts, result, and exposure matched."} Reviewed by ${who.name}.`,
   }).where(eq(testRuns.id, testId));
-  await db.insert(agentRuns).values({
+  await stageRun({
     id: uid("ar"),
     agent: "Independent re-performer",
     skill: "blind_recalculation",
@@ -431,6 +435,23 @@ export async function decideTest(testId: string, decision: "approved" | "rejecte
   await log(decision === "approved" ? "Approved test" : "Rejected test", "test", testId, note || "No note.", test.approvalStatus, decision);
   refresh();
   return { ok: true, message: decision === "approved" ? "Test approved. It is still not an issued report." : "Test rejected. The workpaper stays on file." };
+}
+
+/** Only the GCAE can classify evidence as third-party confirmation (CON) or physical (PHY). Pass "" to clear. */
+export async function setEvidenceClass(evidenceId: string, evidenceClass: string): Promise<ActionResult> {
+  const who = await actor();
+  const blocked = deny(who.authority, ["gcae"], "Only the GCAE can set the evidence class. It decides whether a finding may be Critical.");
+  if (blocked) return blocked;
+  const cls = String(evidenceClass ?? "").trim().toUpperCase();
+  if (cls && cls !== "CON" && cls !== "PHY") return { ok: false, error: "Evidence class must be CON, PHY or empty." };
+  const [row] = await db.select().from(evidence).where(eq(evidence.id, evidenceId));
+  if (!row) return { ok: false, error: "Evidence not found." };
+  const hidden = await guardRecord(who, { engagementId: row.engagementId ?? "" });
+  if (hidden) return hidden;
+  await db.update(evidence).set({ evidenceClass: cls || null }).where(eq(evidence.id, evidenceId));
+  await log("Set evidence class", "evidence", evidenceId, `Evidence class set to ${cls || "none"} by GCAE.`, undefined, cls || "none");
+  refresh();
+  return { ok: true, id: evidenceId, message: `Evidence class set to ${cls || "none"}.` };
 }
 
 export async function saveFinding(input: {
@@ -491,6 +512,8 @@ export async function saveFinding(input: {
     return { ok: false, error: "Every relevant score needs a rationale, including likelihood. Do not assign a number without the reason." };
   }
   const codeBase = input.id ? undefined : `F-${uid("n").slice(-4).toUpperCase()}`;
+  // Iron rule: Critical needs independent evidence. REP/ANA alone caps it at High, flagged for fieldwork corroboration.
+  const capped = await capFindingSeverity(scored.band, known.filter((item) => evidenceIds.includes(item.id)), input.testRunId, input.engagementId, scored.score);
   const values = {
     engagementId: input.engagementId,
     controlId: input.controlId || null,
@@ -503,17 +526,18 @@ export async function saveFinding(input: {
     fiveWhys: input.fiveWhys.filter(Boolean),
     rootCauseClass: input.rootCauseClass,
     rootCauseTheme: input.rootCauseTheme,
-    riskRating: scored.band,
+    riskRating: capped.band,
     likelihood: input.likelihood,
     likelihoodRationale: input.likelihoodRationale,
     impacts: input.impacts,
-    priorityScore: scored.score,
-    priorityBand: scored.band,
+    priorityScore: capped.score ?? scored.score,
+    priorityBand: capped.band,
+    severityFlag: capped.flag,
     highestImpact: scored.highest,
     highestDimension: scored.highestDimension,
     residualRisk: input.residualRisk || "[RESIDUAL RISK NOT STATED]",
     businessValue: input.businessValue || "[VALUE NOT STATED]",
-    valueLevel: input.valueLevel || scored.band,
+    valueLevel: input.valueLevel || capped.band,
     recommendation: input.recommendation || "[RECOMMENDATION NOT STATED]",
     expectedOutcome: input.expectedOutcome || "[EXPECTED OUTCOME NOT STATED]",
     managementPosition: input.managementPosition || "Pending",
@@ -529,9 +553,9 @@ export async function saveFinding(input: {
   } else {
     await db.insert(findings).values({ id, code: codeBase!, ...values });
   }
-  await log(input.id ? "Updated finding" : "Drafted finding", "finding", id, `${input.title} scored ${scored.score} ${scored.band}.`, undefined, scored.band);
+  await log(input.id ? "Updated finding" : "Drafted finding", "finding", id, `${input.title} scored ${scored.score} ${scored.band}.${capped.flag ? ` Severity capped at ${capped.band}: ${capped.flag} (evidence tags ${capped.tags.join(", ")}).` : ""}`, undefined, capped.band);
   refresh();
-  return { ok: true, id, message: `Finding saved as ${scored.band} (${scored.score}). The rating is a recommendation until the GCAE accepts the report.` };
+  return { ok: true, id, message: `Finding saved as ${capped.band} (${scored.score}).${capped.flag ? ` Critical was capped at High: ${capped.flag}.` : ""} The rating is a recommendation until the GCAE accepts the report.` };
 }
 
 export async function saveAction(input: {
@@ -642,8 +666,6 @@ export async function saveRisk(input: {
   return { ok: true, id, message: "Risk added to the register. The scores are the ones you entered, not an agent invention." };
 }
 
-const DECIDABLE_AGENTS = ["Risk scorer", "Vendor tier recommender", "Test executor", "Independent re-performer", "Sufficiency reviewer", "Report assembler"];
-
 export async function decideAgentRun(runId: string, decision: "approved" | "rejected", note: string): Promise<ActionResult> {
   const who = await actor();
   const blocked = deny(who.authority, AUDIT_ROLES, "Only Internal Audit can decide an agent suggestion.");
@@ -652,55 +674,23 @@ export async function decideAgentRun(runId: string, decision: "approved" | "reje
     const hidden = await guardRecord(who, { runId });
     if (hidden) return hidden;
   }
-  if (decision !== "approved" && decision !== "rejected") return { ok: false, error: "Decision must be approved or rejected." };
-  note = String(note ?? "");
-  const [run] = await db.select().from(agentRuns).where(eq(agentRuns.id, runId));
-  if (!run) return { ok: false, error: "Agent run not found." };
-  if (run.status !== "suggested") return { ok: false, error: "This suggestion has already been decided." };
-  if (run.agent !== "Screener" && !DECIDABLE_AGENTS.includes(run.agent)) return { ok: false, error: "This agent type cannot be decided here." };
-  if (!note.trim()) return { ok: false, error: "Write why you accept or reject the suggestion." };
-  if (run.agent === "Risk scorer" && !["gcae", "manager"].includes(who.authority)) {
-    return { ok: false, error: "A planning score is accepted by the audit manager or the GCAE." };
-  }
-  if (run.agent === "Vendor tier recommender" && !["gcae", "manager", "auditor", "qa"].includes(who.authority)) {
-    return { ok: false, error: "Internal Audit accepts a tier. The recommender does not." };
-  }
-  if (run.agent === "Screener") {
-    return { ok: false, error: "This card is a stop, not a decision. Approve materiality on the engagement if testing should proceed. Accepting the card would not open the gate." };
-  }
-  if (decision === "approved" && run.agent === "Risk scorer" && run.output.suggestedScore) {
-    const entityId = run.inputs.entity;
-    if (entityId) {
-      await db.update(entities).set({
-        suggestedScore: Number(run.output.suggestedScore),
-        residualRisk: Number(run.output.suggestedScore),
-        scoreStatus: "accepted",
-        suggestedRationale: note,
-      }).where(eq(entities.id, entityId));
-    }
-  }
-  if (decision === "approved" && run.agent === "Vendor tier recommender" && run.inputs.vendor) {
-    await db.update(vendors).set({
-      tier: run.output.suggestedTier || "1",
-      tierStatus: "accepted",
-      tierRationale: note,
-    }).where(eq(vendors.id, run.inputs.vendor));
-  }
-  if (decision === "rejected" && run.agent === "Risk scorer" && run.inputs.entity) {
-    await db.update(entities).set({ scoreStatus: "rejected", suggestedRationale: note }).where(eq(entities.id, run.inputs.entity));
-  }
-  if (decision === "rejected" && run.agent === "Vendor tier recommender" && run.inputs.vendor) {
-    await db.update(vendors).set({ tierStatus: "rejected", tierRationale: note }).where(eq(vendors.id, run.inputs.vendor));
-  }
-  await db.update(agentRuns).set({
-    status: decision,
-    decidedBy: who.id,
-    decisionNote: note,
-    completedAt: todayIso(),
-  }).where(eq(agentRuns.id, runId));
-  await log(decision === "approved" ? "Accepted agent suggestion" : "Rejected agent suggestion", "agent", runId, note, "suggested", decision);
+  const result = await decideAgentRunAs(who, runId, decision, note);
   refresh();
-  return { ok: true, message: decision === "approved" ? "Suggestion accepted and logged." : "Suggestion rejected. The previous record stands." };
+  return result;
+}
+
+/** GCAE only. Lets a blocked draft be decided, on the record. It does not approve the draft. */
+export async function overrideGuardrail(runId: string, reason: string): Promise<ActionResult> {
+  const who = await actor();
+  const blocked = deny(who.authority, ["gcae"], "Only the GCAE can override a guardrail.");
+  if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, { runId });
+    if (hidden) return hidden;
+  }
+  const result = await overrideGuardrailAs(who, runId, reason);
+  refresh();
+  return result;
 }
 
 export async function approveMateriality(engagementId: string, note: string): Promise<ActionResult> {
@@ -888,7 +878,7 @@ export async function checkSufficiency(pbcId: string): Promise<ActionResult> {
     status = "Insufficient";
   }
   await db.update(pbcRequests).set({ status, sufficiencyNote: note }).where(eq(pbcRequests.id, pbcId));
-  await db.insert(agentRuns).values({
+  await stageRun({
     id: uid("ar"),
     agent: "Sufficiency reviewer",
     skill: "pbc_check",
@@ -943,7 +933,7 @@ export async function runScreener(engagementId: string): Promise<ActionResult> {
           ? "Issued. No further agent action."
           : "Ready for a human decision on the opinion. The screener does not write it.";
   const id = uid("ar");
-  await db.insert(agentRuns).values({
+  await stageRun({
     id,
     agent: "Screener",
     skill: "gate_check",
@@ -1064,7 +1054,7 @@ export async function saveVendorAction(input: {
     notes: "Added from the workbench. Tier is pending acceptance.",
     nextReview: isoOffset(90),
   });
-  await db.insert(agentRuns).values({
+  await stageRun({
     id: uid("ar"),
     agent: "Vendor tier recommender",
     skill: "tier_rule",
@@ -1161,7 +1151,7 @@ async function storeDraft(actorName: string, engagementId: string, provider: str
     ? `The draft contains figures that are not in the file: ${novel.join(", ")}. Do not accept it until those figures are removed.`
     : "Tone draft only. Scores, evidence, and issuance were not changed.";
   const id = uid("ar");
-  await db.insert(agentRuns).values({
+  await stageRun({
     id,
     agent: "Report assembler",
     skill: "model_draft",
@@ -1181,7 +1171,7 @@ async function storeDraft(actorName: string, engagementId: string, provider: str
     limitations: limitation,
     decidedBy: null,
     decisionNote: null,
-  });
+  }, { texts: [text] });
   await log("Filed model draft", "agent", id, limitation, undefined, "suggested");
   refresh();
   return {
@@ -1274,6 +1264,26 @@ export async function runHarness(engagementId: string): Promise<ActionResult> {
   return { ok: true, id: result.id, message: result.message };
 }
 
+/** One of the four v1 stage chains. Stages a proposal. Applies nothing. */
+export async function runChain(type: ChainType, targetId: string): Promise<ActionResult> {
+  const who = await actor();
+  const blocked = deny(who.authority, ["gcae", "manager", "auditor"], "Only Internal Audit can start a chain. It still cannot issue, approve or change a record.");
+  if (blocked) return blocked;
+  {
+    const hidden = await guardRecord(who, type === "engagement_fieldwork" ? { engagementId: targetId } : type === "finding_drafting" ? { testId: targetId } : {});
+    if (hidden) return hidden;
+  }
+  if (!WORK_TYPES.includes(type)) return { ok: false, error: "Unknown work type." };
+  if (type === "engagement_fieldwork") {
+    const locked = await lockIfIssued(targetId);
+    if (locked) return locked;
+  }
+  const result = await runChainFor(who, type, String(targetId ?? ""));
+  refresh();
+  if (!result.ok) return result;
+  return { ok: true, id: result.id, message: result.message };
+}
+
 export async function decideLesson(id: string, decision: "accepted" | "rejected", note: string): Promise<ActionResult> {
   const who = await actor();
   const blocked = deny(who.authority, ["gcae", "manager"], "A lesson is accepted by the audit manager or the GCAE. Acceptance cannot waive an iron rule.");
@@ -1302,23 +1312,7 @@ export async function acceptModelDraft(runId: string): Promise<ActionResult> {
     const hidden = await guardRecord(who, { runId });
     if (hidden) return hidden;
   }
-  const [run] = await db.select().from(agentRuns).where(eq(agentRuns.id, runId));
-  if (!run || run.skill !== "model_draft" || !run.engagementId) return { ok: false, error: "That draft is not on file." };
-  const draft = run.output.draft || "";
-  if (!draft.trim()) return { ok: false, error: "The draft is empty." };
-  if (run.limitations?.includes("figures that are not in the file")) {
-    return { ok: false, error: run.limitations };
-  }
-  const [engagement] = await db.select().from(engagements).where(eq(engagements.id, run.engagementId));
-  if (!engagement) return { ok: false, error: "Engagement not found." };
-  await db.update(engagements).set({ opinion: draft }).where(eq(engagements.id, engagement.id));
-  await db.update(agentRuns).set({
-    status: "approved",
-    decidedBy: who.id,
-    decisionNote: "Saved into the opinion draft. Ratings, findings, and issuance were not changed.",
-    completedAt: todayIso(),
-  }).where(eq(agentRuns.id, runId));
-  await log("Accepted model draft", "engagement", engagement.id, "Opinion text replaced with the reviewed draft. The report was not issued.", engagement.opinion || "", "Model draft");
+  const result = await acceptModelDraftAs(who, runId);
   refresh();
-  return { ok: true, message: "Saved into the opinion draft. Scores were not changed, and the report was not issued." };
+  return result;
 }

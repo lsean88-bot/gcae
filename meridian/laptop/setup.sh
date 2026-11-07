@@ -61,18 +61,20 @@ else
     echo "Database 'meridian' already exists. Kept, ownership given to meridian_app."
   fi
   unset PGPASSWORD
+  (
   umask 077
   {
     echo "# Written by laptop/setup.sh. Local to this laptop. Never commit or share this file."
     echo "DATABASE_URL=postgresql://meridian_app:${APP_DB_PW}@${PGHOST_USE}:${PGPORT_USE}/meridian"
     echo "APP_SECRET=${APP_SECRET_VAL}"
   } > .env
+  )
   unset APP_DB_PW APP_SECRET_VAL
   echo "Created .env (database user meridian_app with a random password, random APP_SECRET)."
 fi
 
 step "3. Checking .env"
-DB_URL="$(grep -E '^DATABASE_URL=' .env | head -n1 | cut -d= -f2-)"
+DB_URL="$(grep -E '^DATABASE_URL=' .env | head -n1 | cut -d= -f2- | tr -d '\r')"
 SECRET_LEN="$(grep -E '^APP_SECRET=' .env | head -n1 | cut -d= -f2- | tr -d '\r\n' | wc -c | tr -d ' ')"
 [ -n "$DB_URL" ] || die ".env has no DATABASE_URL line. Fix it or delete .env and run this script again."
 [ "$SECRET_LEN" -ge 32 ] || die ".env APP_SECRET is missing or shorter than 32 characters. Fix it (see .env.example)."
@@ -87,6 +89,10 @@ step "6. Hardening the audit log (db:harden)"
 npm run db:harden
 step "7. Building the app"
 npm run build
+
+step "7b. Self-check (iron rules and analytics tests)"
+npm run test:rules
+npm run test:analytics
 
 step "8. One-time password for the GCAE (p-gcae)"
 HAS_PW="$(psql -X -q -tA -d "$DB_URL" -c "select count(*) from people where id='p-gcae' and password_hash is not null" 2>/dev/null || echo 0)"

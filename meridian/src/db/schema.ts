@@ -45,7 +45,7 @@ export type AgentStep = {
   n: number;
   title: string;
   detail: string;
-  kind: "read" | "rule" | "calc" | "limit" | "handoff";
+  kind: "read" | "rule" | "calc" | "limit" | "handoff" | "propose" | "guard" | "decide";
 };
 
 export const people = pgTable("people", {
@@ -147,6 +147,8 @@ export const evidence = pgTable("evidence", {
   sheetOrSection: text("sheet_or_section"),
   body: text("body"),
   populationNote: text("population_note"),
+  // Independent evidence class (CON or PHY). Set only by GCAE via setEvidenceClass; never derived from documentType.
+  evidenceClass: text("evidence_class"),
 });
 
 export const controls = pgTable("controls", {
@@ -236,6 +238,8 @@ export const findings = pgTable("findings", {
   testRunId: text("test_run_id"),
   status: text("status").notNull(),
   isolatedOrRecurring: text("isolated_or_recurring").notNull(),
+  // Set when severityCap() lowered Critical to High because the evidence is only REP/ANA. Null otherwise.
+  severityFlag: text("severity_flag"),
 });
 
 export const actions = pgTable("actions", {
@@ -458,4 +462,18 @@ export const acPacks = pgTable("ac_packs", {
   snapshotHash: text("snapshot_hash").notNull(),
   releasedBy: text("released_by"),
   releasedAt: text("released_at"),
+});
+
+/** Saved analytics runs. Immutable after creation; the only permitted change is linking an unlinked run to an engagement once. */
+export const analyticsRuns = pgTable("analytics_runs", {
+  id: text("id").primaryKey(),
+  engagementId: text("engagement_id"),
+  testType: text("test_type").notNull(),
+  paramsJson: jsonb("params_json").$type<Record<string, unknown>>().notNull(),
+  inputFilename: text("input_filename").notNull(),
+  inputSha256: text("input_sha256").notNull(),
+  rowCount: integer("row_count").notNull(),
+  resultJson: jsonb("result_json").$type<Record<string, unknown>>().notNull(),
+  createdBy: text("created_by").notNull(),
+  createdAt: text("created_at").notNull(),
 });

@@ -23,6 +23,7 @@ import {
 import { canAdvance, gateBlockers } from "@/lib/gates";
 import { effectiveDue, isOverdue } from "@/lib/format";
 import { STAGES } from "@/lib/methodology";
+import { FEEDBACK_AREAS, recurringLessons } from "@/lib/lessons";
 import { ensureSeed } from "@/lib/seed";
 
 export async function getActor() {
@@ -505,6 +506,8 @@ export async function getKaizen() {
       engagement: data.engagementRows.find((item) => item.id === lesson.engagementId)?.code || "Group",
     })),
     engagements: data.engagementRows.map((item) => ({ id: item.id, code: item.code, title: item.title })),
+    // Built from the viewer's own (already access-filtered) lesson rows, so a restricted engagement never leaks into the counts.
+    recurring: recurringLessons(data.lessonRows.filter((lesson) => (FEEDBACK_AREAS as readonly string[]).includes(lesson.area)), 5),
   };
 }
 

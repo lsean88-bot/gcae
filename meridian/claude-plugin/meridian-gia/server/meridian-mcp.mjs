@@ -36652,6 +36652,10 @@ var StdioServerTransport = class {
   }
 };
 
+// src/index.ts
+import { readFileSync as readFileSync2, statSync } from "node:fs";
+import { basename } from "node:path";
+
 // src/client.ts
 import { readFileSync } from "node:fs";
 import http from "node:http";
@@ -36720,7 +36724,7 @@ function request(cfg2, method, path, query, body) {
 
 // src/index.ts
 var cfg = configFromEnv();
-var server = new McpServer({ name: "meridian", version: "1.0.0" });
+var server = new McpServer({ name: "meridian", version: "1.1.0" });
 var RULES = "Iron rules: read and draft only. Only the GCAE issues reports, approves materiality or ratings, changes thresholds, closes actions, clears QA or concludes on fraud; no tool here can. Never invent a figure: every number must come from the Meridian file. A fraud indicator is a red flag, not a finding of fraud, and no person is named as a perpetrator.";
 async function run(fn) {
   try {
@@ -36781,4 +36785,35 @@ server.registerTool(
   },
   (args) => post("lessons", args)
 );
+var MAX_FILE = 20 * 1024 * 1024;
+function readLocal(path, sheet) {
+  const st = statSync(path);
+  if (!st.isFile()) throw new Error(`Not a file: ${basename(path)}`);
+  if (st.size > MAX_FILE) throw new Error(`${basename(path)} is larger than 20 MB.`);
+  return { name: basename(path), contentBase64: readFileSync2(path).toString("base64"), ...sheet ? { sheet } : {} };
+}
+server.registerTool("list_analytics_runs", { description: `List saved analytics runs (test type, input file hash, row count, who ran it). Read only. Restricted engagements are never returned. ${RULES}`, inputSchema: {} }, () => get("analytics/runs"));
+server.registerTool("get_analytics_run", { description: `Get one saved analytics run with its full result. Read only. ${RULES}`, inputSchema: { runId: external_exports.string() } }, ({ runId }) => get(`analytics/runs/${idPart(runId)}`));
+server.registerTool(
+  "run_analytics",
+  {
+    description: `Run a deterministic analytics test (profile, benford, duplicates, reconcile) on a LOCAL file (csv or xlsx). This server reads the file on your PC and sends it to Meridian, which saves a read-only run. It is a staged DRAFT result: it approves, rates and issues nothing, and a person interprets it in the app. Column names must exist in the file. ${RULES}`,
+    inputSchema: {
+      filePath: external_exports.string().describe("Absolute path of the file on this computer"),
+      test: external_exports.enum(["profile", "benford", "duplicates", "reconcile"]),
+      params: external_exports.object({ column: external_exports.string().optional(), keyCols: external_exports.array(external_exports.string()).optional(), keyCol: external_exports.string().optional(), amountCol: external_exports.string().optional(), keyColB: external_exports.string().optional(), amountColB: external_exports.string().optional(), tolerance: external_exports.number().optional() }).optional().describe("benford: column. duplicates: keyCols. reconcile: keyCol, amountCol, keyColB, amountColB, tolerance"),
+      sheet: external_exports.string().optional().describe("Sheet name for xlsx"),
+      filePathB: external_exports.string().optional().describe("Second file, for reconcile"),
+      sheetB: external_exports.string().optional(),
+      engagementId: external_exports.string().optional().describe("Link the run to an engagement")
+    }
+  },
+  ({ filePath, test, params, sheet, filePathB, sheetB, engagementId }) => run(() => {
+    const body = { test, params: params || {}, engagementId, fileA: readLocal(filePath, sheet), ...filePathB ? { fileB: readLocal(filePathB, sheetB) } : {} };
+    return request(cfg, "POST", "analytics/runs", void 0, body);
+  })
+);
+server.registerTool("lint_text", { description: `Check draft text against Meridian's iron rules (for example a numeric confidence claim or a statement that fraud is proven). Read only: returns violations and stores nothing. Run it on every draft before filing. ${RULES}`, inputSchema: { text: external_exports.string().min(1), evidenceState: external_exports.string().optional().describe("Where the draft sits on the fraud ladder; leave off for the lowest rung") } }, ({ text, evidenceState }) => post("guardrails/lint", { text, evidenceState }));
+server.registerTool("get_audit_plan", { description: `Get the annual risk-based audit plan and its items (latest plan by default). Read only; plans are approved only by the GCAE in the app. Items on restricted engagements are withheld. ${RULES}`, inputSchema: { year: external_exports.number().int().optional(), planId: external_exports.string().optional() } }, ({ year, planId }) => get("plan", { year: year === void 0 ? void 0 : String(year), planId }));
+server.registerTool("get_risk_register", { description: `Get the ERM risk register with inherent and residual scores, the top risks and a 5x5 heat map. A residual that was never assessed is reported as not assessed, never guessed. Read only. ${RULES}`, inputSchema: { view: external_exports.enum(["inherent", "residual"]).optional(), top: external_exports.number().int().min(1).max(50).optional() } }, ({ view, top }) => get("risk-register", { view, top: top === void 0 ? void 0 : String(top) }));
 await server.connect(new StdioServerTransport());

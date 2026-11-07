@@ -1,7 +1,14 @@
 {
   "name": "meridian-gia",
-  "version": "1.0.0",
-  "description": "Operate the Meridian assurance workbench from Claude Code on your own laptop: skill with the audit iron rules, a local MCP connector (read and draft only), three agents and two commands.",
-  "author": { "name": "Group Internal Audit" },
-  "keywords": ["internal-audit", "meridian", "assurance"]
+  "version": "1.1.0",
+  "description": "CGAE Command: operate the Meridian assurance workbench from Claude Code or Claude Desktop on your own laptop. Skill with the audit iron rules, a local MCP connector (20 tools, read and draft only: analytics, guardrail lint, audit plan, ERM), three agents and four commands. Uses your Claude subscription; no API key.",
+  "author": {
+    "name": "Group Internal Audit"
+  },
+  "keywords": [
+    "internal-audit",
+    "meridian",
+    "assurance"
+  ],
+  "displayName": "CGAE Command"
 }

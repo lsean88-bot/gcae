@@ -28,6 +28,8 @@ const headers = [
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
+  // Analytics uploads: 20 MB per file, up to two files per run. The server enforces the per-file cap.
+  experimental: { serverActions: { bodySizeLimit: "45mb" } },
   async headers() {
     return [{ source: "/:path*", headers }];
   },
