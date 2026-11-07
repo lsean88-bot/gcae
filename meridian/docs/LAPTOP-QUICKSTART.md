@@ -186,6 +186,85 @@ Stop Meridian, then in `C:\gcae`: `git pull`, and run setup again (it is safe to
 | `meridian` not listed in `/mcp` | Run `claude plugin list` or check the MCP config. Reinstall, then restart Claude. |
 | `HTTP 429` | More than 120 requests in a minute. Wait a minute. |
 
+
+## Windows troubleshooting
+
+### (a) Forgotten PostgreSQL admin password
+
+**Warning:** the restore step at the end is mandatory. Until you complete it, the database accepts connections from this laptop without a password.
+
+1. Back up the file first. Replace the path if your PostgreSQL 16 install is elsewhere.
+
+```powershell
+Copy-Item "C:\Program Files\PostgreSQL\16\data\pg_hba.conf" "C:\Program Files\PostgreSQL\16\data\pg_hba.conf.bak"
+```
+
+2. Open `pg_hba.conf` in Notepad as Administrator. On the lines for `127.0.0.1/32` and `::1/128`, change the method (the last word) to `trust`. Save the file.
+
+3. Restart PostgreSQL.
+
+```powershell
+Restart-Service postgresql-x64-16
+```
+
+4. Set a new admin password. Replace `<your own>` with the password you choose.
+
+```powershell
+psql -U postgres -h 127.0.0.1 -c "ALTER USER postgres PASSWORD '<your own>';"
+```
+
+5. Restore the backup file. This step is mandatory.
+
+```powershell
+Copy-Item "C:\Program Files\PostgreSQL\16\data\pg_hba.conf.bak" "C:\Program Files\PostgreSQL\16\data\pg_hba.conf" -Force
+```
+
+6. Restart PostgreSQL again.
+
+```powershell
+Restart-Service postgresql-x64-16
+```
+
+7. Put the same password in `meridian\.env`, then start Meridian.
+
+### (b) `npm ci` fails with EPERM on `next-swc*.node`
+
+This means a Node process still holds a file in `node_modules`.
+
+1. Find the Node processes. Run this from any PowerShell window.
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Select ProcessId, CommandLine
+```
+
+2. Stop them. Use an Administrator PowerShell, or quit Claude Desktop. Replace `12345` with a `ProcessId` from step 1, one command per process.
+
+```powershell
+Stop-Process -Id 12345 -Force
+```
+
+3. Delete `node_modules`. Run this from the `meridian` folder.
+
+```powershell
+Remove-Item -Recurse -Force .\node_modules
+```
+
+4. Run setup again. Run this from the `meridian` folder.
+
+```powershell
+.\laptop\setup.ps1
+```
+
+`setup.ps1` now does steps 2 and 3 itself. If a file stays locked, it stops with a clear message. Then repeat steps 1 and 2.
+
+**Last resort:** add a Microsoft Defender exclusion for the Meridian folder. Run this in an Administrator PowerShell, and replace the path.
+
+```powershell
+Add-MpPreference -ExclusionPath "C:\path\to\meridian"
+```
+
+An exclusion lowers protection for that folder. Remove it when the install is done.
+
 ## Optional: Offline AI with Ollama
 
 This lets the report page draft the Executive Summary and Root Cause wording with a model that runs on your own laptop. No data leaves the laptop and no Claude account is used. It is optional; without it the template text is used and the button is hidden.

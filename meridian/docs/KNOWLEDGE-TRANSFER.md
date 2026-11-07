@@ -58,7 +58,33 @@ Logic in `src/lib/iron-rules.ts`.
 - No tool approves, finalises, issues or closes.
 - Claude Desktop and Claude Code use the user's Claude subscription through this connector. No API key is needed for it.
 
+
+### 13-section report (CGAE Command release)
+
+- **Table `report_versions`** (`src/db/schema.ts`, `reportVersions`): `id`, `engagement_id`, `version_no` (unique per engagement), `status` (Draft, Reviewed or Final), `content_json`, `gate_json` (blocking and warnings), `sha256`, `created_by`, `created_at`, `signed_off_by`, `signed_off_at`.
+- **Trigger rules** (`scripts/hardening.sql`, function `report_versions_guard`, triggers `report_versions_immutable` and `report_versions_no_truncate`):
+  - DELETE and TRUNCATE are refused.
+  - A Final version cannot change.
+  - Only `status`, `signed_off_by` and `signed_off_at` may change. Content, gate, hash and author fields are fixed.
+  - Status moves forward only: Draft to Reviewed or Final, and Reviewed to Final.
+  - Final is refused while the stored `gate_json` has blocking items.
+  - Final needs both `signed_off_by` and `signed_off_at`. Sign-off may be set only on the move to Final.
+- The GCAE-only check is in the app (`setReportStatus` in `src/server/report13-data.ts`). The database cannot see the viewer.
+- **npm test scripts** (names checked against `package.json`):
+
+| Script | File | Result recorded |
+| --- | --- | --- |
+| `npm run uat` | `scripts/uat.ts` | 77/77 (T-01 to T-77) |
+| `npm run test:report13` | `scripts/test-report13.ts` | 17 |
+| `npm run test:report13-docx` | `scripts/test-report13-docx.ts` | 7 |
+| `npm run test:report13-ai` | `scripts/test-report13-ai.ts` | 9 |
+| `npm run test:rules` | `scripts/test-iron-rules.ts` | 31 |
+| `npm run test:analytics` | `scripts/test-analytics.ts` | 16 |
+
+Results are from Linux with PostgreSQL 16. The offline AI path was tested with a simulated model only.
+
 ## 3. Target way of working
+
 
 Seven evidence-to-assurance stages:
 
@@ -120,6 +146,8 @@ The first page load calls `ensureSeed()`. If `settings.seeded` exists, the demon
 
 Release verification for CGAE Command (Linux, PostgreSQL 16): `test:rules` 31/31, `test:analytics` 16/16, UAT 69/69, plus an independent QA pass and a re-test of the leak fix.
 
+Later release verification (Linux, PostgreSQL 16): `npm run uat` 77/77 (T-01 to T-77). This supersedes the 69/69 figure above. See section 2, "13-section report", for the report test scripts.
+
 Earlier measured result (2026-11-07, laptop setup on PostgreSQL 16): 55 passed, 0 failed, T-01 to T-55. Reconciled: the in-app page runs T-01 to T-55; `npm run uat` adds T-56 to T-69 from `scripts/uat.ts` (69 total, 69/69 on 2026-11-07).
 
 UAT: T-01 to T-22 are calculation and gates in `src/server/uat.ts`; T-23 to T-45 are security, Claude connector and restricted-engagement checks in `src/server/security-checks.ts`; T-46 to T-55 are the strategic modules in `src/server/strategic-checks.ts`. The cases are shown on `/uat`.
@@ -148,6 +176,9 @@ Application screens live in `src/app`. Interactive screens live in `src/componen
 | `scripts/test-iron-rules.ts`, `scripts/test-analytics.ts` | `test:rules` and `test:analytics` |
 | `laptop/setup.ps1`, `start.ps1`, `backup.ps1`, `restore.ps1` | Windows laptop scripts |
 | `.claude/skills/meridian-gia/SKILL.md` | Claude skill plugin |
+| `src/lib/report13.ts`, `src/lib/report13-docx.ts` | 13-section report sections and Word export |
+| `src/server/report13-data.ts`, `src/server/report13-ai.ts` | Report versions, status changes, offline AI draft |
+| `src/components/report13-panel.tsx` | Reports page panel |
 
 ## 8. Roles and authority
 

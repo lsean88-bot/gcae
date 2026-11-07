@@ -249,5 +249,51 @@ For a live audit, open a new engagement and register that period’s extract.
 | Let the specialists run | Agent harness |
 | Accept a lesson | Kaizen |
 | Read or draft the report | Report studio |
+| Generate the 13-section report and Word files | Reports (13-section report panel) |
 | See the proof tests | UAT evidence |
 | Download the Excel tracker | Action tracker, then Download workbook |
+
+## 13-section report and Word export
+
+The 13-section report is built from engagement data only. No AI is needed.
+
+**Steps**
+1. Open **Reports** and choose the engagement in the **13-section report** panel.
+2. Click **Generate new version**. A new Draft is stored with the next version number.
+3. Read the 13 sections, in this order: Executive Summary, Background, Scope and Objectives, Methodology, Detailed Findings, Risk and Impact, Root Cause, Control Gap Assessment, Recommendation, Management Response, Agreed Action Plan, Timeline and Accountability, Conclusion.
+4. Read the gate panel: **Blocking** and **Warnings**.
+5. Read the version list. Each version shows its status, sign-off and hash.
+6. Download the full report (.docx) and the Board brief (.docx).
+7. GCAE only: click **Mark Reviewed**, then **Mark Final**. The Final button is disabled while blocking items are open.
+
+**Rules the report applies**
+- The Executive Summary opens with a plain-language summary and a legend for score bands and evidence tags.
+- Net and gross variance are shown where linked test runs have amounts.
+- A capped finding shows "pending fieldwork corroboration".
+- A missing field shows "[Not provided – required before issue]". Fill the source data, then generate a new version. Earlier versions are not changed.
+- Blocking items are: gaps; rule violations (fraud wording, "% confidence"); a recommendation without an owner, a due date or a measurable action; summary counts that do not tie to the detail; a capped Critical.
+- Versions are immutable. Status moves forward only: Draft to Reviewed, or Draft or Reviewed to Final. The app and the database both allow Draft to move straight to Final.
+- Sign-off is recorded only at Final. A Final version is frozen.
+- Downloads come from the stored snapshot. Draft and Reviewed files carry "DRAFT – not for issue".
+- Restricted engagements: a report masks every other restricted engagement's terms. An engagement's own report shows its own terms.
+
+## Offline AI drafting (optional)
+
+A local model can rewrite the Executive Summary and Root Cause wording. Nothing leaves the laptop.
+
+**Set up (once)**
+1. Install Ollama and download the model: `llama3.1:8b`.
+2. In `meridian\.env`, set the local model address to `http://127.0.0.1:11434/v1` and `AI_MODEL=llama3.1:8b`.
+3. Stop and restart the app.
+
+**Use**
+1. Sign in as the GCAE and open **Reports**.
+2. Click **Draft narrative with AI**. The button shows only when a model is set and only for the GCAE.
+3. The result is saved as a new Draft marked "AI-assisted".
+
+**Rules**
+- The model rewrites only the Executive Summary and Root Cause.
+- A draft is rejected if it adds numbers, changes severity words or breaks the rules.
+- Only `127.0.0.1` and `localhost` count as local. Remote models are refused for restricted engagements.
+- A person must review every AI draft before use.
+- Status: tested with a simulated model only. No live model test has been run.

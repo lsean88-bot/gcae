@@ -4,6 +4,30 @@ This kit is the handover for the assurance workbench used by MK Tron Group Inter
 
 Meridian is an original evidence-to-assurance system. It is informed by publicly described reviewer-first audit practice. It is not Optro, not AuditBoard, and not a reconstruction of any vendor product.
 
+
+## Release notes: 13-section report and Word export (2026-11-07)
+
+**What changed**
+- Reports page, **13-section report** panel: choose an engagement, click **Generate new version**. Each version stores the 13 sections, a release gate (Blocking and Warnings) and a SHA-256 hash.
+- Download the full report (.docx) and the Board brief (.docx). Files come from the stored snapshot, not live data.
+- **Mark Reviewed** and **Mark Final** are for the GCAE only.
+- The report is built from engagement data only. No AI is needed. Missing fields show "[Not provided – required before issue]".
+- Release gate: Final is refused while any blocking item is open. This is enforced in the app and in the database.
+- Versions are immutable. Draft and Reviewed files carry "DRAFT – not for issue".
+- Optional offline AI: a local model (for example Ollama) rewrites only the Executive Summary and Root Cause and saves a new "AI-assisted" Draft. Remote models are refused for restricted engagements.
+- Restricted engagements: a report masks every other restricted engagement's terms.
+- Windows: troubleshooting added to `LAPTOP-QUICKSTART.md` (forgotten PostgreSQL admin password; `npm ci` EPERM on `next-swc*.node`). `setup.ps1` now stops with a clear message if a file stays locked.
+
+**Verification** (Linux, PostgreSQL 16)
+- `npm run uat`: 77/77. The in-app **UAT evidence** page shows T-01 to T-55.
+- `test:report13` 17, `test:report13-docx` 7, `test:report13-ai` 9, `test:rules` 31, `test:analytics` 16.
+- An independent QA review was run and its defects were fixed.
+
+**Limitations**
+- No live AI test. The offline AI path was tested with a simulated model only.
+- The Windows scripts and the troubleshooting steps were not run here. The first install on a Windows laptop is the acceptance test.
+- The release notes below are from the previous release and are kept as history. Their UAT figure of 69 is superseded by 77 above.
+
 ## Release notes: CGAE Command (2026-11-07)
 
 **Guardrails** (`src/lib/iron-rules.ts`)
