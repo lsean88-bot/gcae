@@ -496,7 +496,7 @@ export async function saveFinding(input: {
   }
   const codeBase = input.id ? undefined : `F-${uid("n").slice(-4).toUpperCase()}`;
   // Iron rule: Critical needs independent evidence. REP/ANA alone caps it at High, flagged for fieldwork corroboration.
-  const capped = await capFindingSeverity(scored.band, known.filter((item) => evidenceIds.includes(item.id)), input.testRunId);
+  const capped = await capFindingSeverity(scored.band, known.filter((item) => evidenceIds.includes(item.id)), input.testRunId, input.engagementId);
   const values = {
     engagementId: input.engagementId,
     controlId: input.controlId || null,

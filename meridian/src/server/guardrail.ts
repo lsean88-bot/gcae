@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { agentRuns, auditEvents, engagements, testRuns, type AgentStep } from "@/db/schema";
 import { todayIso, uid } from "@/lib/format";
@@ -151,11 +151,14 @@ export async function overrideGuardrailAs(who: Who, runId: string, reason: strin
   const [run] = await db.select().from(agentRuns).where(eq(agentRuns.id, runId));
   if (!run) return { ok: false, error: "Agent run not found." };
   if (run.status !== "suggested") return { ok: false, error: "This suggestion has already been decided." };
-  const guard = readGuardrail(run.output);
-  if (!guard || guard.status !== "blocked") return { ok: false, error: "This run has no blocking guardrail violation to override." };
+  // A run staged before this feature has no stored record. approvalGate() checks it now, so it can be overridden too.
+  const gate = approvalGate(run);
+  if (!gate.blocked) return { ok: false, error: "This run has no blocking guardrail violation to override." };
+  const guard: RunGuardrail = readGuardrail(run.output) ?? { status: "blocked", violations: gate.violations, checkedAt: todayIso() };
   const next: RunGuardrail = { ...guard, status: "overridden", override: { by: who.name, byId: who.id, reason: note, at: todayIso() } };
   const blockingRules = [...new Set(guard.violations.filter((v) => v.level === "block").map((v) => v.rule))];
-  await db.update(agentRuns).set({ output: { ...run.output, guardrail: JSON.stringify(next), guardrailStatus: "overridden" } }).where(eq(agentRuns.id, runId));
+  const claimed = await db.update(agentRuns).set({ output: { ...run.output, guardrail: JSON.stringify(next), guardrailStatus: "overridden" } }).where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "suggested"))).returning({ id: agentRuns.id });
+  if (!claimed.length) return { ok: false, error: "This suggestion has already been decided." };
   await auditAs(who, "Overrode guardrail", "agent", runId, `Rules: ${blockingRules.join(", ")}. Reason: ${note}`, "blocked", "overridden");
   for (const rule of blockingRules) {
     await captureLesson({ kind: "override", agent: run.agent, rule, reason: note, engagementId: run.engagementId, decidedBy: who.name });
@@ -181,11 +184,13 @@ export async function restrictedMaskTerms(): Promise<string[]> {
  * Finding save path: apply the severity cap from the evidence the finding cites.
  * Returns the band to store and the flag to keep (null when nothing was capped).
  */
-export async function capFindingSeverity(band: string, cited: TagSource[], testRunId?: string | null) {
+export async function capFindingSeverity(band: string, cited: TagSource[], testRunId?: string | null, engagementId?: string | null) {
   let qaCleared = false;
   if (testRunId) {
-    const [run] = await db.select({ qa: testRuns.qaStatus }).from(testRuns).where(eq(testRuns.id, testRunId));
-    qaCleared = run?.qa === "cleared";
+    // QA re-performance only supports a finding when the cleared test belongs to the SAME engagement.
+    // The status is stored as "Cleared", so compare case-insensitively. A client-supplied id must not lift the cap.
+    const [run] = await db.select({ qa: testRuns.qaStatus, eng: testRuns.engagementId }).from(testRuns).where(eq(testRuns.id, testRunId));
+    qaCleared = Boolean(run) && String(run.qa).toLowerCase() === "cleared" && Boolean(engagementId) && run.eng === engagementId;
   }
   const tags = deriveEvidenceTags(cited, { qaCleared });
   const cap = severityCap(band, tags);

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { agentRuns, engagements, entities, vendors } from "@/db/schema";
 import { todayIso } from "@/lib/format";
@@ -35,6 +35,9 @@ export async function decideAgentRunAs(who: Who, runId: string, decision: "appro
     const gate = approvalGate(run);
     if (gate.blocked) return { ok: false, error: gate.message };
   }
+  // Claim the run first, only while it is still "suggested", so two decisions cannot both apply side effects.
+  const claimed = await db.update(agentRuns).set({ status: decision, decidedBy: who.id, decisionNote: note, completedAt: todayIso() }).where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "suggested"))).returning({ id: agentRuns.id });
+  if (!claimed.length) return { ok: false, error: "This suggestion has already been decided." };
   if (decision === "approved" && run.agent === "Risk scorer" && run.output.suggestedScore) {
     const entityId = run.inputs.entity;
     if (entityId) {
@@ -59,12 +62,6 @@ export async function decideAgentRunAs(who: Who, runId: string, decision: "appro
   if (decision === "rejected" && run.agent === "Vendor tier recommender" && run.inputs.vendor) {
     await db.update(vendors).set({ tierStatus: "rejected", tierRationale: note }).where(eq(vendors.id, run.inputs.vendor));
   }
-  await db.update(agentRuns).set({
-    status: decision,
-    decidedBy: who.id,
-    decisionNote: note,
-    completedAt: todayIso(),
-  }).where(eq(agentRuns.id, runId));
   await auditAs(who, decision === "approved" ? "Accepted agent suggestion" : "Rejected agent suggestion", "agent", runId, note, "suggested", decision);
   if (decision === "rejected") {
     for (const rule of rulesForRejection(run)) {
@@ -77,6 +74,7 @@ export async function decideAgentRunAs(who: Who, runId: string, decision: "appro
 export async function acceptModelDraftAs(who: Who, runId: string): Promise<DecisionResult> {
   const [run] = await db.select().from(agentRuns).where(eq(agentRuns.id, runId));
   if (!run || run.skill !== "model_draft" || !run.engagementId) return { ok: false, error: "That draft is not on file." };
+  if (run.status !== "suggested") return { ok: false, error: "This draft has already been decided." };
   const draft = run.output.draft || "";
   if (!draft.trim()) return { ok: false, error: "The draft is empty." };
   if (run.limitations?.includes("figures that are not in the file")) {
@@ -86,13 +84,14 @@ export async function acceptModelDraftAs(who: Who, runId: string): Promise<Decis
   if (gate.blocked) return { ok: false, error: gate.message };
   const [engagement] = await db.select().from(engagements).where(eq(engagements.id, run.engagementId));
   if (!engagement) return { ok: false, error: "Engagement not found." };
-  await db.update(engagements).set({ opinion: draft }).where(eq(engagements.id, engagement.id));
-  await db.update(agentRuns).set({
+  const claimed = await db.update(agentRuns).set({
     status: "approved",
     decidedBy: who.id,
     decisionNote: "Saved into the opinion draft. Ratings, findings, and issuance were not changed.",
     completedAt: todayIso(),
-  }).where(eq(agentRuns.id, runId));
+  }).where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "suggested"))).returning({ id: agentRuns.id });
+  if (!claimed.length) return { ok: false, error: "This draft has already been decided." };
+  await db.update(engagements).set({ opinion: draft }).where(eq(engagements.id, engagement.id));
   await auditAs(who, "Accepted model draft", "engagement", engagement.id, "Opinion text replaced with the reviewed draft. The report was not issued.", engagement.opinion || "", "Model draft");
   return { ok: true, message: "Saved into the opinion draft. Scores were not changed, and the report was not issued." };
 }

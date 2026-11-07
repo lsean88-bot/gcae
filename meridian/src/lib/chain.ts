@@ -117,7 +117,7 @@ export function candidateSeverity(i: FindingDraftInput): { severity: string | nu
 export function reasonFindingDraft(input: FindingDraftInput): Reasoned {
   const t = input.test;
   const cand = candidateSeverity(input);
-  const tags = deriveEvidenceTags(input.evidence, { qaCleared: t.qaStatus === "cleared" });
+  const tags = deriveEvidenceTags(input.evidence, { qaCleared: t.qaStatus.toLowerCase() === "cleared" });
   const reasoning = [
     `[Fact] Test ${t.id} (${t.procedure}): ${t.result}, ${t.exceptionsCount} exception(s) in ${t.recordsTested} record(s) tested.`,
     t.populationCount > t.recordsTested ? `[Risk] Population stated ${t.populationCount}, tested ${t.recordsTested}. The remaining ${t.populationCount - t.recordsTested} are Unable to conclude, not a pass.` : "[Fact] Records tested equal the stated population.",

@@ -18,6 +18,21 @@ export function KaizenView({ data }: { data: Data }) {
       <p className="lede">
         A lesson is a proposed change in how the team works. It can make a gate stricter. It cannot waive an iron rule, skip evidence, or let an agent issue a report. The GCAE or the audit manager accepts it.
       </p>
+      <section className="panel" aria-label="Recurring lessons">
+        <h2 className="h3">Recurring lessons</h2>
+        <p className="small muted">Agent and rule pairs where a draft was rejected or a guardrail was overridden. Most frequent first. A repeat is a reason to sharpen the prompt or the rule wording. It is never a reason to relax the rule.</p>
+        {data.recurring.length ? (
+          <ul className="small">
+            {data.recurring.map((item) => (
+              <li key={item.title}>
+                <strong>{item.title}</strong>: {item.count} time(s) across {item.engagements} engagement(s) ({item.overrides} override(s), {item.rejections} rejection(s)). Latest ({item.latestAt}): {item.latestReason}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="small muted">None yet. A lesson appears here when a draft is rejected or a guardrail is overridden.</p>
+        )}
+      </section>
       <div className="filters">
         {areas.map((item) => (
           <button key={item} className={area === item ? "btn primary small" : "btn small"} type="button" onClick={() => setArea(item)}>{item}</button>

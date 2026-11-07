@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { agentRuns, engagements, evidence, findings, lessons, testRuns, type ImpactMap } from "@/db/schema";
 import { figuresNotInSource } from "@/lib/ai";
 import { todayIso, uid } from "@/lib/format";
+import { lintText } from "@/lib/iron-rules";
 import { weakensIronRule } from "@/lib/lessons";
 import { buildPrompt } from "@/lib/reports";
 import { emptyImpacts, scoreImpacts } from "@/lib/scoring";
@@ -92,13 +93,16 @@ export async function draftFinding(actor: ApiActor, body: Record<string, unknown
   const text = [title, condition, rootCause, likelihoodRationale, ...Object.values(fields), ...fiveWhys, ...Object.values(impacts).map((c) => c.note)].filter(Boolean).join("\n");
 
   if (FRAUD_CONCLUSION.test(text)) return refuse(422, "A fraud indicator is a red flag, not a finding of fraud. Remove any statement that fraud is confirmed or that a person did it.");
+  // Iron rules: fraud ladder and numeric-confidence wording, same lint as staged agent drafts.
+  const lint = lintText(text);
+  if (lint.length) return refuse(422, `Guardrail: ${lint[0].message}`);
   // Figure guard: every figure must appear in the cited evidence, the engagement file or its test workpapers.
   const source = JSON.stringify([engagement, cited, runs]);
   const novel = figuresNotInSource(source, text);
   if (novel.length) return refuse(422, `The draft contains figures that are not in the source file: ${novel.join(", ")}. Remove them or cite evidence that holds them.`);
 
   const id = uid("f");
-  const capped = await capFindingSeverity(scored.band, cited.filter((row): row is NonNullable<typeof row> => Boolean(row)), testRunId || null);
+  const capped = await capFindingSeverity(scored.band, cited.filter((row): row is NonNullable<typeof row> => Boolean(row)), testRunId || null, engagementId);
   await db.insert(findings).values({
     id,
     code: `F-${uid("n").slice(-4).toUpperCase()}`,
