@@ -2,7 +2,7 @@ import "dotenv/config"; // loads .env without overriding variables already set (
 import { securityChecks } from "../src/server/security-checks";
 import { eq, like } from "drizzle-orm";
 import { db } from "../src/db";
-import { agentRuns, auditEvents, auditPlans, engagements, evidence, findings, lessons, people, planItems, testRuns } from "../src/db/schema";
+import { sessions, reportVersions, agentRuns, auditEvents, auditPlans, engagements, evidence, findings, lessons, people, planItems, testRuns } from "../src/db/schema";
 import { runChainFor } from "../src/server/chains";
 import { hiddenEngagementIds } from "../src/server/access";
 import { runAnalyticsFromApi } from "../src/server/api-modules";
@@ -21,13 +21,19 @@ import ExcelJS from "exceljs";
 import { analyticsRuns } from "../src/db/schema";
 import { getRunAs, inspectUploadAs, linkRunAs, listRunsAs, runAnalyticsAs } from "../src/server/analytics";
 import { join } from "path";
+import { execFileSync } from "child_process";
+import { mkdtempSync, writeFileSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { desc } from "drizzle-orm";
+import { createSessionRow, hashToken } from "../src/server/session-store";
+import { createReportVersion, setReportStatus } from "../src/server/report13-data";
 import { todayIso } from "../src/lib/format";
 import { deriveEvidenceTags, severityCap } from "../src/lib/iron-rules";
 import { recurringLessons } from "../src/lib/lessons";
 import { draftFinding } from "../src/server/api-drafts";
 import type { ApiActor } from "../src/server/api-tokens";
 import { decideAgentRunAs } from "../src/server/decisions";
-import { capFindingSeverity, overrideGuardrailAs, readGuardrail, stageRun } from "../src/server/guardrail";
+import { restrictedMaskTerms, capFindingSeverity, overrideGuardrailAs, readGuardrail, stageRun } from "../src/server/guardrail";
 
 type Case = { id: string; name: string; pass: boolean; evidence: string };
 
@@ -290,6 +296,63 @@ async function main() {
   await db.delete(planItems).where(eq(planItems.planId, lkPlan));
   await db.delete(auditPlans).where(eq(auditPlans.id, lkPlan));
   await db.delete(engagements).where(eq(engagements.id, lkEng));
+
+
+  // ---- 13-section report versions and DOCX route (T-70 to T-75). report_versions rows cannot be deleted: assert on the latest version only.
+  const BASE = process.env.UAT_BASE_URL || "http://127.0.0.1:3000";
+  const latestOf = async (eid: string) => (await db.select().from(reportVersions).where(eq(reportVersions.engagementId, eid)).orderBy(desc(reportVersions.versionNo)).limit(1))[0];
+  const gTok = await createSessionRow("p-gcae", Date.now());
+  const aTok = await createSessionRow("p-aud1", Date.now());
+  const getDocx = (id: string, tok: string, kind = "report") => fetch(`${BASE}/reports/v/${id}/docx?kind=${kind}`, { headers: { cookie: `meridian_session=${tok}` }, redirect: "manual" });
+  const docxText = (buf: Buffer) => {
+    const dir = mkdtempSync(join(tmpdir(), "uat-docx-"));
+    try { writeFileSync(join(dir, "r.docx"), buf); return execFileSync("unzip", ["-p", join(dir, "r.docx"), "word/document.xml"], { maxBuffer: 64 * 1024 * 1024 }).toString("utf8"); } finally { rmSync(dir, { recursive: true, force: true }); }
+  };
+  const vApNo = (await latestOf("eng-ap"))?.versionNo ?? 0;
+  const vAp = await createReportVersion(gcaeWho, "eng-ap");
+  const apRow = await latestOf("eng-ap");
+  const secs = (apRow?.contentJson as { report?: { sections?: { number: number }[] } })?.report?.sections ?? [];
+  check("T-70", "Generating a version for a seeded engagement stores a new Draft with 13 sections numbered 1 to 13", vAp.ok && apRow.versionNo === vApNo + 1 && apRow.status === "Draft" && secs.length === 13 && secs.every((s, i) => s.number === i + 1), `ok=${vAp.ok} version=${apRow?.versionNo} sections=${secs.length}`);
+
+  const blockedRes = vAp.ok ? await setReportStatus(gcaeWho, vAp.id, "Final") : null;
+  const afterBlocked = await latestOf("eng-ap");
+  const blockingNow = apRow?.gateJson.blocking.length ?? 0;
+  check("T-71", "Final is refused by the server while gate_json.blocking is non-empty, and the status stays Draft (known positive: blocking is non-empty)", blockingNow > 0 && blockedRes?.ok === false && afterBlocked.status === "Draft" && afterBlocked.signedOffBy === null, `blocking=${blockingNow} final ok=${blockedRes?.ok} status=${afterBlocked?.status}`);
+
+  const gRes = vAp.ok ? await getDocx(vAp.id, gTok) : null;
+  const gBuf = gRes ? Buffer.from(await gRes.arrayBuffer()) : Buffer.alloc(0);
+  const bRes = vAp.ok ? await getDocx(vAp.id, gTok, "brief") : null;
+  const bBuf = bRes ? Buffer.from(await bRes.arrayBuffer()) : Buffer.alloc(0);
+  const cd = gRes?.headers.get("content-disposition") || "";
+  check("T-72", "The DOCX route returns the Word content type, an attachment with a safe filename, and a body starting with PK for GCAE (report and brief)", gRes?.status === 200 && gRes.headers.get("content-type") === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" && /^attachment; filename="[A-Za-z0-9_.-]+\.docx"$/.test(cd) && gBuf.subarray(0, 2).toString() === "PK" && bRes?.status === 200 && bBuf.subarray(0, 2).toString() === "PK", `status=${gRes?.status} type=${gRes?.headers.get("content-type")} disposition=${cd} magic=${gBuf.subarray(0, 2).toString()} brief=${bRes?.status}`);
+
+  // Restricted engagement with its own stored version: the auditor has no access.
+  const rsTag = `rs${Date.now().toString(36)}`;
+  const rsEng = `eng-${rsTag}`;
+  const rsTitle = `Zq${rsTag} sealed treasury review`;
+  await db.insert(engagements).values({ id: rsEng, code: `UAT-${rsTag}`, title: rsTitle, entityId: "none", period: "UAT", objective: "UAT", scope: "UAT", status: "Fieldwork", stage: 3, qaStatus: "pending", audience: "UAT", businessContext: "UAT", leadId: "p-gcae", startDate: todayIso(), restricted: true });
+  const rsVer = await createReportVersion(gcaeWho, rsEng);
+  const rsGcae = rsVer.ok ? await getDocx(rsVer.id, gTok) : null;
+  const rsAud = rsVer.ok ? await getDocx(rsVer.id, aTok) : null;
+  const rsNone = rsVer.ok ? await fetch(`${BASE}/reports/v/${rsVer.id}/docx`, { redirect: "manual" }) : null;
+  const rsAudCreate = await createReportVersion(audWho, rsEng);
+  check("T-73", "A user without access to a restricted engagement gets 404 from the DOCX route and cannot generate a version; GCAE gets 200 (positive control); no session gets 404 or 401", rsGcae?.status === 200 && rsAud?.status === 404 && [401, 404].includes(rsNone?.status ?? 0) && rsAudCreate.ok === false, `gcae=${rsGcae?.status} auditor=${rsAud?.status} no session=${rsNone?.status} auditor create ok=${rsAudCreate.ok}`);
+
+  const maskTerms = await restrictedMaskTerms();
+  const apXml = docxText(gBuf);
+  const rsXml = rsGcae ? docxText(Buffer.from(await rsGcae.arrayBuffer())) : "";
+  const briefXml = docxText(bBuf);
+  check("T-74", "A restricted engagement's title is absent from word/document.xml of another engagement's report and brief (known positive: the global restricted set holds the title, so even its own DOCX is masked; the XML is real, non-empty text)", [...maskTerms].some((t) => t.includes(rsTag)) && rsXml.length > 1000 && !rsXml.includes(rsTag) && !apXml.includes(rsTag) && !briefXml.includes(rsTag) && apXml.length > 1000, `in mask set=${[...maskTerms].some((t) => t.includes(rsTag))} own docx contains tag=${rsXml.includes(rsTag)} other report leaks=${apXml.includes(rsTag)} other brief leaks=${briefXml.includes(rsTag)} xml bytes=${apXml.length}`);
+
+  const audSet = vAp.ok ? await setReportStatus(audWho, vAp.id, "Reviewed") : null;
+  const audFinal = vAp.ok ? await setReportStatus(audWho, vAp.id, "Final") : null;
+  const afterAud = await latestOf("eng-ap");
+  const gcaeRev = vAp.ok ? await setReportStatus(gcaeWho, vAp.id, "Reviewed") : null;
+  check("T-75", "A non-GCAE user cannot set a report status (Reviewed or Final) and the row is unchanged; GCAE can mark Reviewed (positive control)", audSet?.ok === false && audFinal?.ok === false && afterAud.status === "Draft" && gcaeRev?.ok === true, `auditor reviewed ok=${audSet?.ok} final ok=${audFinal?.ok} status after auditor=${afterAud?.status} gcae reviewed ok=${gcaeRev?.ok}`);
+
+  await db.delete(sessions).where(eq(sessions.tokenHash, hashToken(gTok)));
+  await db.delete(sessions).where(eq(sessions.tokenHash, hashToken(aTok)));
+  await db.delete(engagements).where(eq(engagements.id, rsEng));
 
   // Cleanup of UAT rows (audit_events stay: the log is append-only).
   await db.delete(agentRuns).where(like(agentRuns.id, `ar-${tag}%`));

@@ -181,3 +181,13 @@ export async function exportVersionDocx(viewer: Viewer, versionId: string, kind:
   await auditAs(viewer, "report13.export", "engagement", row.engagementId, `Exported ${kind} DOCX for version ${row.versionNo}.`);
   return { ok: true, buffer, filename: `${kind === "brief" ? "board-note" : "audit-report"}-v${row.versionNo}-${row.status}.docx` };
 }
+
+/** Latest stored version for the page: content masked with the current global restricted set. Null when hidden or none exists. */
+export async function latestVersionView(viewer: Viewer, engagementId: string) {
+  if (await engagementHidden(viewer, engagementId)) return null;
+  const [row] = await db.select().from(reportVersions).where(eq(reportVersions.engagementId, engagementId)).orderBy(desc(reportVersions.versionNo)).limit(1);
+  if (!row) return null;
+  const terms = await restrictedMaskTerms();
+  const c = deepMask(row.contentJson as { entity: string; report: { sections: { number: number; title: string; paragraphs: string[]; tables?: { headers: string[]; rows: string[][] }[] }[] } }, terms);
+  return { id: row.id, versionNo: row.versionNo, status: row.status, gate: row.gateJson, sections: c.report.sections };
+}
