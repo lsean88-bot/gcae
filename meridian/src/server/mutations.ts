@@ -437,6 +437,23 @@ export async function decideTest(testId: string, decision: "approved" | "rejecte
   return { ok: true, message: decision === "approved" ? "Test approved. It is still not an issued report." : "Test rejected. The workpaper stays on file." };
 }
 
+/** Only the GCAE can classify evidence as third-party confirmation (CON) or physical (PHY). Pass "" to clear. */
+export async function setEvidenceClass(evidenceId: string, evidenceClass: string): Promise<ActionResult> {
+  const who = await actor();
+  const blocked = deny(who.authority, ["gcae"], "Only the GCAE can set the evidence class. It decides whether a finding may be Critical.");
+  if (blocked) return blocked;
+  const cls = String(evidenceClass ?? "").trim().toUpperCase();
+  if (cls && cls !== "CON" && cls !== "PHY") return { ok: false, error: "Evidence class must be CON, PHY or empty." };
+  const [row] = await db.select().from(evidence).where(eq(evidence.id, evidenceId));
+  if (!row) return { ok: false, error: "Evidence not found." };
+  const hidden = await guardRecord(who, { engagementId: row.engagementId ?? "" });
+  if (hidden) return hidden;
+  await db.update(evidence).set({ evidenceClass: cls || null }).where(eq(evidence.id, evidenceId));
+  await log("Set evidence class", "evidence", evidenceId, `Evidence class set to ${cls || "none"} by GCAE.`, undefined, cls || "none");
+  refresh();
+  return { ok: true, id: evidenceId, message: `Evidence class set to ${cls || "none"}.` };
+}
+
 export async function saveFinding(input: {
   id?: string;
   engagementId: string;
@@ -496,7 +513,7 @@ export async function saveFinding(input: {
   }
   const codeBase = input.id ? undefined : `F-${uid("n").slice(-4).toUpperCase()}`;
   // Iron rule: Critical needs independent evidence. REP/ANA alone caps it at High, flagged for fieldwork corroboration.
-  const capped = await capFindingSeverity(scored.band, known.filter((item) => evidenceIds.includes(item.id)), input.testRunId, input.engagementId);
+  const capped = await capFindingSeverity(scored.band, known.filter((item) => evidenceIds.includes(item.id)), input.testRunId, input.engagementId, scored.score);
   const values = {
     engagementId: input.engagementId,
     controlId: input.controlId || null,
@@ -513,7 +530,7 @@ export async function saveFinding(input: {
     likelihood: input.likelihood,
     likelihoodRationale: input.likelihoodRationale,
     impacts: input.impacts,
-    priorityScore: scored.score,
+    priorityScore: capped.score ?? scored.score,
     priorityBand: capped.band,
     severityFlag: capped.flag,
     highestImpact: scored.highest,

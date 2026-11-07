@@ -1,6 +1,9 @@
 import type { ImpactMap } from "@/db/schema";
 import { bandFor } from "@/lib/methodology";
 
+/** Highest raw score still in the High band (Critical starts at 20, see bandFor). */
+export const HIGH_BAND_MAX = 19;
+
 export function scoreImpacts(likelihood: number, impacts: ImpactMap) {
   const relevant = Object.entries(impacts).filter(([, cell]) => cell.relevant && cell.score > 0);
   if (!likelihood || relevant.length === 0) {

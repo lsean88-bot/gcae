@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { severityCap, fraudLadderLint, confidencePercentLint, variancePair, maskRestricted } from "../src/lib/iron-rules";
+import { deriveEvidenceTags, severityCap, fraudLadderLint, confidencePercentLint, variancePair, maskRestricted } from "../src/lib/iron-rules";
 
 let passed = 0;
 function t(name: string, fn: () => void) {
@@ -78,5 +78,26 @@ t("e+ masks all terms case-insensitively", () => {
 });
 t("e- unrelated text untouched", () => assert.equal(maskRestricted("Nothing to hide here.", ["secret"]), "Nothing to hide here."));
 t("e- empty set leaves text unchanged", () => assert.equal(maskRestricted("Alpha stays.", []), "Alpha stays."));
+
+// (f) local negation
+t("f- negation scoping the phrase suppresses the hit", () => {
+  for (const x of ["He has not committed fraud.", "There is no evidence of intentional misconduct.", "This was not intentionally done."]) {
+    assert.equal(fraudLadderLint(x).length, 0, x);
+  }
+});
+t("f+ 'no doubt X committed fraud' still flagged", () => assert.ok(fraudLadderLint("There is no doubt X committed fraud.").length > 0));
+t("f+ 'no question he stole' still flagged", () => assert.ok(fraudLadderLint("There is no question he stole the funds.").length > 0));
+t("f+ unrelated negation elsewhere in sentence does not suppress", () => assert.ok(fraudLadderLint("The control did not operate, and the clerk stole cash.").length > 0));
+
+// (g) evidence tags: CON/PHY only from evidence_class
+t("g+ documentType 'confirmation' alone gives no CON", () => {
+  const tags = deriveEvidenceTags([{ documentType: "Bank confirmation" }, { documentType: "Physical stock take" }]);
+  assert.ok(!tags.includes("CON") && !tags.includes("PHY"));
+  assert.equal(severityCap("Critical", tags).severity, "High");
+});
+t("g+ evidenceClass CON/PHY gives the tag", () => {
+  assert.ok(deriveEvidenceTags([{ documentType: "Extract", evidenceClass: "CON" }]).includes("CON"));
+  assert.ok(deriveEvidenceTags([{ documentType: "Extract", evidenceClass: "phy" }]).includes("PHY"));
+});
 
 console.log(`\n${passed} passed, 0 failed`);

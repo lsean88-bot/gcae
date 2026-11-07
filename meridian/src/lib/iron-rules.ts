@@ -32,7 +32,7 @@ export function severityCap(findingSeverity: string, evidenceTags: readonly stri
   return { severity: findingSeverity, capped: false, flag: null };
 }
 
-export type TagSource = { documentType: string; reliability?: string };
+export type TagSource = { documentType: string; reliability?: string; evidenceClass?: string | null };
 
 /**
  * Evidence tags for a finding, from the evidence it cites. Conservative by design:
@@ -44,8 +44,9 @@ export function deriveEvidenceTags(cited: readonly TagSource[], opts: { qaCleare
   const tags = new Set<string>(["ANA"]);
   for (const item of cited) {
     const type = item.documentType;
-    if (/confirmation/i.test(type)) tags.add("CON");
-    else if (/physical|stock.?take|cage count/i.test(type)) tags.add("PHY");
+    // CON and PHY come only from evidence_class, which GCAE alone sets. Free-text documentType never upgrades to them.
+    const cls = (item.evidenceClass ?? "").trim().toUpperCase();
+    if (cls === "CON" || cls === "PHY") tags.add(cls);
     else if (/walkthrough|observ/i.test(type)) tags.add("OBS");
     else if (/inspect|contract|policy|signed|approval form/i.test(type)) tags.add("INS");
     else tags.add("REP");
@@ -77,7 +78,20 @@ const ASSERTION_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /\b(deliberate(ly)?|knowingly|willful(ly)?|wilful(ly)?)\b/gi, label: "intent word" },
 ];
 
-const NEGATION = /\b(not|no|never|cannot|can't|won't|without|nor|neither|unless)\b/i;
+const NEGATOR = String.raw`(?:not|no|never|cannot|can't|won't|without|nor|neither|unless)`;
+/** A negator within a few words before the term, with no clause break between them. */
+const NEG_BEFORE = new RegExp(String.raw`\b${NEGATOR}\b(?:\s+[\w'-]+){0,4}\s*$`, "i");
+/** "term is not ...", "term was never ..." directly after the term. */
+const NEG_AFTER = new RegExp(String.raw`^\s+(?:(?:is|was|are|were|has|have|had|been|being)\s+)*${NEGATOR}\b`, "i");
+/** Affirmative idioms that contain a negator and must not suppress a hit. */
+const AFFIRMATIVE_IDIOM = /\b(?:no\s+(?:doubt|question|denying|mistake)|not\s+only|not\s+just|cannot\s+(?:deny|be\s+denied)|can't\s+deny)\b/gi;
+
+/** True only when a negation directly scopes the flagged phrase, not merely when the sentence contains one. */
+function negatedLocally(sentence: string, start: number, length: number): boolean {
+  const before = sentence.slice(0, start).replace(AFFIRMATIVE_IDIOM, " ");
+  const after = sentence.slice(start + length);
+  return NEG_BEFORE.test(before) || NEG_AFTER.test(after);
+}
 
 /** The sentence around index, so a negation in the same sentence can be seen on either side. */
 function sentenceAround(text: string, index: number, length: number) {
@@ -100,8 +114,8 @@ export function fraudLadderLint(text: string, evidenceState: string = "weakness"
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(text))) {
-      const { sentence } = sentenceAround(text, m.index, m[0].length);
-      if (NEGATION.test(sentence)) continue;
+      const { start, sentence } = sentenceAround(text, m.index, m[0].length);
+      if (negatedLocally(sentence, m.index - start, m[0].length)) continue;
       hits.push({
         rule: "fraud-ladder",
         term: label,

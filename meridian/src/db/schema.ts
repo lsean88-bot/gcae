@@ -147,6 +147,8 @@ export const evidence = pgTable("evidence", {
   sheetOrSection: text("sheet_or_section"),
   body: text("body"),
   populationNote: text("population_note"),
+  // Independent evidence class (CON or PHY). Set only by GCAE via setEvidenceClass; never derived from documentType.
+  evidenceClass: text("evidence_class"),
 });
 
 export const controls = pgTable("controls", {

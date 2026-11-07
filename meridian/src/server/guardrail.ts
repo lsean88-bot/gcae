@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { agentRuns, auditEvents, engagements, testRuns, type AgentStep } from "@/db/schema";
 import { todayIso, uid } from "@/lib/format";
+import { HIGH_BAND_MAX } from "@/lib/scoring";
 import { deriveEvidenceTags, lintText, severityCap, type LintHit, type TagSource } from "@/lib/iron-rules";
 import { captureLesson } from "@/lib/lessons";
 import { engagementForObject } from "@/server/access";
@@ -184,7 +185,7 @@ export async function restrictedMaskTerms(): Promise<string[]> {
  * Finding save path: apply the severity cap from the evidence the finding cites.
  * Returns the band to store and the flag to keep (null when nothing was capped).
  */
-export async function capFindingSeverity(band: string, cited: TagSource[], testRunId?: string | null, engagementId?: string | null) {
+export async function capFindingSeverity(band: string, cited: TagSource[], testRunId?: string | null, engagementId?: string | null, rawScore?: number) {
   let qaCleared = false;
   if (testRunId) {
     // QA re-performance only supports a finding when the cleared test belongs to the SAME engagement.
@@ -194,5 +195,12 @@ export async function capFindingSeverity(band: string, cited: TagSource[], testR
   }
   const tags = deriveEvidenceTags(cited, { qaCleared });
   const cap = severityCap(band, tags);
-  return { band: cap.severity, flag: cap.flag, tags };
+  // A capped finding must not keep a Critical-band raw score. Clamp to the High maximum, keep the original in the flag.
+  let score = rawScore;
+  let flag = cap.flag;
+  if (cap.capped && rawScore !== undefined && rawScore > HIGH_BAND_MAX) {
+    score = HIGH_BAND_MAX;
+    flag = `${cap.flag} (original score ${rawScore} clamped to ${HIGH_BAND_MAX})`;
+  }
+  return { band: cap.severity, flag, tags, score };
 }
