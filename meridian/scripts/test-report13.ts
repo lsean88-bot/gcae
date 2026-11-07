@@ -120,4 +120,48 @@ t("masking: global restricted terms removed from report and brief", () => {
   assert.ok(s.includes(MASK));
   assert.ok(JSON.stringify(buildReport13(m)).includes("Falcon"), "positive control: unmasked contains term");
 });
+
+const esText = (r: ReturnType<typeof buildReport13>) => r.sections[0].paragraphs.join("\n");
+const dfText = (r: ReturnType<typeof buildReport13>) => r.sections[4].paragraphs.join("\n");
+t("variance: net and gross print for a finding with amounts; nothing prints for a finding without (known positive and negative)", () => {
+  const d = dfText(buildReport13(good));
+  assert.match(d, /F1 Variance: net MYR 20, gross absolute MYR 80 over 2 lines\. Offsetting differences are present/);
+  assert.ok(!/F2 Variance/.test(d), "F2 has no amounts, so no variance line");
+  assert.ok(!/net 0\b|net MYR 0\b/.test(d), "no zero variance is shown");
+  const empty = base([finding(3, { amounts: [] })]);
+  assert.ok(!/Variance/.test(dfText(buildReport13(empty))), "empty amounts print nothing");
+});
+t("executive summary: plain-language opening with rating, counts, top finding, management ask and Board ask", () => {
+  const r = buildReport13(good);
+  const p = r.sections[0].paragraphs;
+  assert.match(p[0], /^Overall rating: Critical\. Serious weaknesses need immediate action\.$/);
+  assert.equal(p[1], "2 findings need management action, and 1 is High or above.");
+  assert.equal(p[2], "The most significant finding is: Finding 1 title.");
+  assert.match(p[3], /Management is asked to complete the 2 agreed actions by the due dates, from 2027-03-31 to 2027-03-31\./);
+  assert.equal(p[4], "The Board or Audit Committee is asked to note this report.");
+  assert.ok(!/decide/.test(esText(r)), "known negative: nothing overdue, so no decision is requested");
+  assert.ok(r.sections[0].tables![0].headers[0] === "Band", "the opening sits before the tables and the band table stays first");
+});
+t("executive summary: an overdue Critical or High finding turns the Board ask into a decision", () => {
+  const r = buildReport13(good, { asOf: "2028-01-01" });
+  assert.match(r.sections[0].paragraphs[4], /asked to decide how to resolve 1 overdue Critical or High finding\./);
+});
+t("executive summary: legend gives score bands and all seven evidence tags", () => {
+  const e = esText(buildReport13(good));
+  assert.match(e, /Critical is 20 or more, High is 12 to 19, Medium is 6 to 11, and Low is 1 to 5/);
+  for (const tag of ["INS", "PHY", "CON", "REP", "REC", "OBS", "ANA"]) assert.ok(e.includes(`[${tag}]`), `legend has ${tag}`);
+});
+t("executive summary: no findings reads plainly and the gate still passes its plain-language checks for well-formed data", () => {
+  const none = base([]);
+  const p = buildReport13(none).sections[0].paragraphs;
+  assert.equal(p[1], "0 findings need management action, and 0 are High or above.");
+  assert.equal(p[2], "No finding is recorded.");
+  assert.deepEqual(releaseGate(buildReport13(good), good).warnings, []);
+});
+t("board brief carries the same opening", () => {
+  const opening = buildReport13(good).sections[0].paragraphs.slice(0, 5);
+  const b = boardBrief(good);
+  for (const line of opening) assert.ok(b.paragraphs.includes(line) && b.text.includes(line), line);
+  assert.ok(boardBrief(good, { asOf: "2028-01-01" }).text.includes("asked to decide"));
+});
 console.log(`${pass} tests passed`);

@@ -40,8 +40,10 @@ BEGIN
   END IF;
 END $$;
 
--- Report versions: snapshots are immutable. No DELETE or TRUNCATE. Only status, signed_off_by and signed_off_at may change,
--- and a Final version is frozen entirely.
+-- Report versions: snapshots are immutable. No DELETE or TRUNCATE. Only status, signed_off_by and signed_off_at may change.
+-- Status moves forward only (Draft to Reviewed to Final, or Draft to Final). Final is refused while gate_json.blocking is non-empty.
+-- Sign-off is set only on the move to Final, and both fields must then be present. A Final version is frozen entirely.
+-- The GCAE-only check stays in the app: the database cannot see the viewer.
 CREATE OR REPLACE FUNCTION report_versions_guard() RETURNS trigger AS $$
 BEGIN
   IF TG_OP = 'DELETE' OR TG_OP = 'TRUNCATE' THEN
@@ -59,6 +61,20 @@ BEGIN
      OR NEW.created_by IS DISTINCT FROM OLD.created_by
      OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
     RAISE EXCEPTION 'report_versions: only status, signed_off_by and signed_off_at may change' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF NEW.status IS DISTINCT FROM OLD.status
+     AND NOT ((OLD.status = 'Draft' AND NEW.status IN ('Reviewed', 'Final')) OR (OLD.status = 'Reviewed' AND NEW.status = 'Final')) THEN
+    RAISE EXCEPTION 'report_versions: status may only move forward (Draft, Reviewed, Final); % to % is refused', OLD.status, NEW.status USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF NEW.status = 'Final' THEN
+    IF jsonb_typeof(OLD.gate_json->'blocking') IS DISTINCT FROM 'array' OR jsonb_array_length(OLD.gate_json->'blocking') > 0 THEN
+      RAISE EXCEPTION 'report_versions: Final is refused while the release gate has blocking items' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF NEW.signed_off_by IS NULL OR NEW.signed_off_at IS NULL THEN
+      RAISE EXCEPTION 'report_versions: Final needs both signed_off_by and signed_off_at' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  ELSIF NEW.signed_off_by IS DISTINCT FROM OLD.signed_off_by OR NEW.signed_off_at IS DISTINCT FROM OLD.signed_off_at THEN
+    RAISE EXCEPTION 'report_versions: sign-off may be set only on the move to Final' USING ERRCODE = 'insufficient_privilege';
   END IF;
   RETURN NEW;
 END;

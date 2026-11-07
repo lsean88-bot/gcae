@@ -21,7 +21,7 @@ export function compatibleConfig(): { configured: boolean; localOnly: boolean } 
   try { url = new URL(raw); } catch { return { configured: false, localOnly: false }; }
   if (url.protocol !== "http:" && url.protocol !== "https:") return { configured: false, localOnly: false };
   const host = url.hostname.toLowerCase();
-  const localOnly = host === "127.0.0.1" || host === "localhost";
+  const localOnly = host === "127.0.0.1" || host === "localhost" || host === "[::1]" || host === "::1";
   return { configured: localOnly || Boolean(process.env.AI_API_KEY), localOnly };
 }
 

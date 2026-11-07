@@ -62,7 +62,7 @@ const fake = (text: string): AiDrafter => ({ name: "fake-model", complete: async
     const keep = { b: process.env.AI_BASE_URL, k: process.env.AI_API_KEY };
     delete process.env.AI_API_KEY;
     const cases: [string, boolean, boolean][] = [
-      ["http://127.0.0.1:11434/v1", true, true], ["http://localhost:11434/v1", true, true],
+      ["http://127.0.0.1:11434/v1", true, true], ["http://localhost:11434/v1", true, true], ["http://[::1]:11434/v1", true, true], ["http://[::2]:11434/v1", false, false],
       ["https://api.example.com/v1", false, false], ["http://localhost.evil.com/v1", false, false], ["http://127.0.0.1@evil.com/v1", false, false],
     ];
     for (const [url, configured, local] of cases) { process.env.AI_BASE_URL = url; assert.deepEqual(compatibleConfig(), { configured, localOnly: local }, url); }

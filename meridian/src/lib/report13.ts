@@ -58,7 +58,7 @@ export type Report13Input = Omit<BriefInput, "findings" | "actions" | "tests"> &
   /** Optional pre-written summary figures. Used as given, so the gate can test them against the detail. */
   summaryCounts?: Record<string, number>;
 };
-export type Report13Options = { globalRestrictedTerms?: Iterable<string> };
+export type Report13Options = { globalRestrictedTerms?: Iterable<string>; /** ISO date used to judge overdue actions. Defaults to today. */ asOf?: string };
 
 export type R13Table = { headers: string[]; rows: string[][] };
 export type R13Section = { number: number; title: string; paragraphs: string[]; tables?: R13Table[] };
@@ -95,6 +95,44 @@ function sortTop(fs: Capped[]) {
 }
 const money = (n: number, cur?: string) => `${cur ? cur + " " : ""}${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 
+const RATING_MEANING: Record<string, string> = {
+  Critical: "Serious weaknesses need immediate action.",
+  High: "Significant weaknesses need prompt action.",
+  Medium: "Some weaknesses exist and should be fixed by the agreed dates.",
+  Low: "Only minor weaknesses were found.",
+  Unscored: "The findings have not been scored yet.",
+  "Not yet rated": "No finding is recorded, so no rating is given.",
+};
+const CLOSED = /^(closed|complete|completed|done|validated)/i;
+
+/** Plain-language opening of the Executive Summary, built from the data only. Used by the report and by the Board brief. */
+export function execOpening(input: Report13Input, fs: Capped[], rating: string, top: Capped[], asOf?: string): string[] {
+  const today = asOf || new Date().toISOString().slice(0, 10);
+  const open = input.actions.filter((a) => !CLOSED.test(a.status || ""));
+  const needAction = fs.filter((f) => open.some((a) => a.findingId === f.id)).length;
+  const highUp = fs.filter((f) => f.priorityBand === "Critical" || f.priorityBand === "High").length;
+  const dueOf = (a: (typeof open)[number]) => (a.revisedDue || a.originalDue || "") as string;
+  const dues = open.map(dueOf).filter(Boolean).sort();
+  const overdue = fs.filter((f) => (f.priorityBand === "Critical" || f.priorityBand === "High") && open.some((a) => a.findingId === f.id && dueOf(a) && dueOf(a) < today)).length;
+  return [
+    `Overall rating: ${rating}. ${RATING_MEANING[rating] ?? "No plain-language meaning is defined for this rating."}`,
+    `${needAction} finding${needAction === 1 ? " needs" : "s need"} management action, and ${highUp} ${highUp === 1 ? "is" : "are"} High or above.`,
+    top.length ? `The most significant finding is: ${top[0].title}.` : "No finding is recorded.",
+    dues.length
+      ? `Management is asked to complete the ${open.length} agreed action${open.length === 1 ? "" : "s"} by the due dates, from ${dues[0]} to ${dues[dues.length - 1]}.`
+      : "No open management action with a due date is recorded.",
+    overdue
+      ? `The Board or Audit Committee is asked to decide how to resolve ${overdue} overdue Critical or High finding${overdue === 1 ? "" : "s"}.`
+      : "The Board or Audit Committee is asked to note this report.",
+  ];
+}
+
+const LEGEND = [
+  "Score bands: Critical is 20 or more, High is 12 to 19, Medium is 6 to 11, and Low is 1 to 5.",
+  "Evidence tags: [INS] inspection of documents; [PHY] physical inspection; [CON] confirmation from a third party; [REP] reported by management.",
+  "More tags: [REC] reperformed by Internal Audit; [OBS] observed by Internal Audit; [ANA] Internal Audit analysis.",
+];
+
 export function buildReport13(input: Report13Input, opts: Report13Options = {}): Report13 {
   const gaps: R13Gap[] = [];
   const seen = new Set<string>();
@@ -122,11 +160,13 @@ export function buildReport13(input: Report13Input, opts: Report13Options = {}):
     number: 1,
     title: SECTION_TITLES[0],
     paragraphs: [
+      ...execOpening(input, fs, rating, top, opts.asOf),
       `This report covers ${entity} for ${period}. ${fs.length} finding${fs.length === 1 ? " is" : "s are"} recorded.`,
       `Overall rating, taken from the highest finding band after the severity cap: ${rating}.`,
       fs.some((f) => f.capped)
         ? `Findings with only management-reported or auditor-analysis evidence are held at High and marked ${SEVERITY_CAP_FLAG}: ${fs.filter((f) => f.capped).map(refs).join(", ")}.`
         : "No finding has been held back by the severity cap.",
+      ...LEGEND,
     ],
     tables: [
       { headers: ["Band", "Findings"], rows: BANDS.map((b) => [b, String(shown[b] ?? 0)]) },
@@ -365,6 +405,7 @@ export function boardBrief(input: Report13Input, opts: Report13Options = {}): Bo
   const limitations = [LIMITATION, ...(input.limitations ? [input.limitations] : [])];
   const paragraphs = [
     `${blank(input.entityName) ? NOT_PROVIDED : input.entityName}, ${blank(input.period) ? NOT_PROVIDED : input.period}. Overall rating: ${rating}.`,
+    ...execOpening(input, fs, rating, top, opts.asOf),
   ];
   const mask = (s: string) => (opts.globalRestrictedTerms ? maskRestricted(s, opts.globalRestrictedTerms) : s);
   const out = { paragraphs: paragraphs.map(mask), topFindings: topFindings.map(mask), asks: asks.map(mask), limitations: limitations.map(mask) };

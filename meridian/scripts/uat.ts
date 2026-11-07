@@ -1,7 +1,7 @@
 import "dotenv/config"; // loads .env without overriding variables already set (CI)
 import { securityChecks } from "../src/server/security-checks";
 import { eq, like } from "drizzle-orm";
-import { db } from "../src/db";
+import { db, pool } from "../src/db";
 import { sessions, reportVersions, agentRuns, auditEvents, auditPlans, engagements, evidence, findings, lessons, people, planItems, testRuns } from "../src/db/schema";
 import { runChainFor } from "../src/server/chains";
 import { hiddenEngagementIds } from "../src/server/access";
@@ -216,7 +216,10 @@ async function main() {
   const evAp = await db.select().from(evidence).where(eq(evidence.engagementId, "eng-ap"));
   const repOnly = evAp.find((e) => severityCap("Critical", deriveEvidenceTags([{ documentType: e.documentType, reliability: e.reliability }])).capped);
   const apiActor: ApiActor = { person: gcaeRow, authority: "gcae", tokenId: "tok-uat", tokenName: "uat-token", scopes: ["read", "draft"], actorLabel: "UAT via Claude token uat-token" };
-  const critBody = { engagementId: "eng-ap", title: "UAT critical cap", condition: "Approvals were missing on sampled invoices.", rootCause: "[ROOT CAUSE TO BE CONFIRMED WITH MANAGEMENT]", evidenceIds: [repOnly?.id || "none"], likelihood: 4, likelihoodRationale: "Seen in the sample.", impacts: { financial: { score: 5, note: "Payments leave the group.", relevant: true } } };
+  const critEng = `eng-crit-${tag}`, critEv = `ev-crit-${tag}`;
+  await db.insert(engagements).values({ id: critEng, code: `UAT-CRIT-${tag}`, title: "UAT critical cap fixture", entityId: "none", period: "UAT", objective: "UAT", scope: "UAT", status: "Fieldwork", stage: 3, qaStatus: "pending", audience: "UAT", businessContext: "UAT", leadId: "p-gcae", startDate: todayIso(), restricted: false });
+  if (repOnly) await db.insert(evidence).values({ ...repOnly, id: critEv, engagementId: critEng });
+  const critBody = { engagementId: critEng, title: "UAT critical cap", condition: "Approvals were missing on sampled invoices.", rootCause: "[ROOT CAUSE TO BE CONFIRMED WITH MANAGEMENT]", evidenceIds: [repOnly ? critEv : "none"], likelihood: 4, likelihoodRationale: "Seen in the sample.", impacts: { financial: { score: 5, note: "Payments leave the group.", relevant: true } } };
   const crit = await draftFinding(apiActor, critBody);
   const [critRow] = typeof crit.body.id === "string" ? await db.select().from(findings).where(eq(findings.id, crit.body.id)) : [];
   check("T-62", "A Critical finding that cites only REP/ANA evidence is saved as High with the flag 'pending fieldwork corroboration' (server-side, whatever the client sends)", Boolean(repOnly) && crit.status === 201 && critRow?.priorityScore === 19 && critRow.priorityBand === "High" && critRow.riskRating === "High" && String(critRow.severityFlag).startsWith("pending fieldwork corroboration") && String(critRow.severityFlag).includes("original score 20"), `evidence=${repOnly?.id} (${repOnly?.documentType}) http=${crit.status} score=${critRow?.priorityScore} band=${critRow?.priorityBand} flag=${critRow?.severityFlag}${crit.status === 201 ? "" : ` error=${String(crit.body.error)}`}`);
@@ -354,6 +357,13 @@ async function main() {
   const gcaeRev = vAp.ok ? await setReportStatus(gcaeWho, vAp.id, "Reviewed") : null;
   check("T-75", "A non-GCAE user cannot set a report status (Reviewed or Final) and the row is unchanged; GCAE can mark Reviewed (positive control)", audSet?.ok === false && audFinal?.ok === false && afterAud.status === "Draft" && gcaeRev?.ok === true, `auditor reviewed ok=${audSet?.ok} final ok=${audFinal?.ok} status after auditor=${afterAud?.status} gcae reviewed ok=${gcaeRev?.ok}`);
 
+  // T-77: the database itself refuses Final on a version with blocking items (direct SQL, no app code in the path).
+  const dbTry = async (sql: string, args: unknown[]) => { try { await pool.query(sql, args); return "ALLOWED"; } catch (e) { return e instanceof Error ? e.message : String(e); } };
+  const stillDraft = vAp.ok ? (await pool.query("SELECT status, jsonb_array_length(gate_json->'blocking') AS n FROM report_versions WHERE id = $1", [vAp.id])).rows[0] : undefined;
+  const directFinal = vAp.ok ? await dbTry("UPDATE report_versions SET status = 'Final', signed_off_by = 'UAT', signed_off_at = $2 WHERE id = $1", [vAp.id, new Date().toISOString()]) : "NO VERSION";
+  const afterDirect = vAp.ok ? (await pool.query("SELECT status FROM report_versions WHERE id = $1", [vAp.id])).rows[0] : undefined;
+  check("T-77", "A direct SQL UPDATE to Final on a version with blocking items fails at the database level and the row is unchanged (known positive: blocking is non-empty)", Number(stillDraft?.n) > 0 && directFinal.includes("blocking items") && afterDirect?.status !== "Final", `blocking=${stillDraft?.n} result=${directFinal.slice(0, 90)} status=${afterDirect?.status}`);
+
   await db.delete(sessions).where(eq(sessions.tokenHash, hashToken(gTok)));
   await db.delete(sessions).where(eq(sessions.tokenHash, hashToken(aTok)));
   await db.delete(engagements).where(eq(engagements.id, rsEng));
@@ -362,6 +372,8 @@ async function main() {
   await db.delete(agentRuns).where(like(agentRuns.id, `ar-${tag}%`));
   await db.delete(lessons).where(like(lessons.observation, `%${tag}%`));
   if (typeof crit.body.id === "string") await db.delete(findings).where(eq(findings.id, crit.body.id)).catch(() => undefined);
+  await db.delete(evidence).where(eq(evidence.id, critEv)).catch(() => undefined);
+  await db.delete(engagements).where(eq(engagements.id, critEng)).catch(() => undefined);
 
   const failed = cases.filter((item) => !item.pass);
   console.log(JSON.stringify({ passed: cases.length - failed.length, failed: failed.length, total: cases.length, cases }, null, 2));

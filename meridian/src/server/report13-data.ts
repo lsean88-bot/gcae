@@ -53,6 +53,12 @@ export async function loadReport13Input(viewer: Viewer, engagementId: string): P
     const run = f.testRunId ? testById.get(f.testRunId) : undefined;
     const qaCleared = Boolean(run) && run!.qaStatus.toLowerCase() === "cleared";
     const tags = deriveEvidenceTags(ids(f.evidenceIds).flatMap(tagSrc), { qaCleared });
+    // Findings hold no amounts. The linked test run does: each exception row's amount (a signed difference, so expected 0 and actual = amount),
+    // else the run's single exposure figure. No non-zero amount means nothing is passed on, and nothing prints.
+    const rowAmts = (run?.workpaper?.rowResults ?? [])
+      .filter((r) => r.outcome === "Fail / Exception" && typeof r.amount === "number" && Number.isFinite(r.amount) && r.amount !== 0)
+      .map((r) => ({ label: r.key, expected: 0, actual: r.amount as number }));
+    const amounts = rowAmts.length ? rowAmts : run?.exposureAmount ? [{ label: run.id, expected: 0, actual: run.exposureAmount }] : undefined;
     const effect = [u(f.residualRisk), u(f.quantifiedImpact)].filter(Boolean).join(" ");
     return {
       id: f.id, code: f.code, title: f.title, priorityBand: f.priorityBand, priorityScore: f.priorityScore,
@@ -60,6 +66,7 @@ export async function loadReport13Input(viewer: Viewer, engagementId: string): P
       owner: u(act ? ownerName.get(act.ownerId) : undefined), dueDate: u(act ? act.revisedDue || act.originalDue : undefined),
       evidenceTags: tags, workpaperRef: u(f.testRunId ? `Test ${f.testRunId}` : f.evidenceIds),
       rootCauseClass: u(f.rootCauseClass), managementResponse: u(f.managementPosition),
+      ...(amounts ? { amounts, currency: u(run?.currency || run?.workpaper?.currency) } : {}),
     };
   });
 
@@ -128,7 +135,7 @@ export async function createReportVersion(viewer: Viewer, engagementId: string, 
   if (ai) {
     const d = await draftNarrative(report, ai);
     report = d.report;
-    aiAssist = { label: d.accepted.length ? aiLabel(ai.name) : `AI draft attempted (local model: ${ai.name}); no section passed the checks, template text kept`, accepted: d.accepted, rejected: d.rejected };
+    aiAssist = { label: d.accepted.length ? aiLabel(ai.name) : `AI draft attempted (model: ${aiStatus().compatibleModel || ai.name}); no section passed the checks, template text kept`, accepted: d.accepted, rejected: d.rejected };
   }
   const brief = boardBrief(loaded.input, { globalRestrictedTerms: terms });
   const gate = releaseGate(report, loaded.input);
