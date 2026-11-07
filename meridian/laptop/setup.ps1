@@ -9,8 +9,15 @@ Set-Location $App
 function Step($t) { Write-Host ""; Write-Host "== $t" -ForegroundColor Cyan }
 function Stop-Setup($t) { Write-Host ""; Write-Host "STOP: $t" -ForegroundColor Red; exit 1 }
 function Run-Native($label, [scriptblock]$cmd) {
-  & $cmd
+  # Windows PowerShell 5.1 turns native stderr (warnings) into errors under 'Stop'; judge by exit code instead.
+  $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  try { & $cmd } finally { $ErrorActionPreference = $old }
   if ($LASTEXITCODE -ne 0) { Stop-Setup "$label failed (exit code $LASTEXITCODE). Read the messages above." }
+}
+# psql on Windows needs every option BEFORE the connection string, so the URL is passed with -d.
+function Psql-Url([string]$url, [string]$sql) {
+  $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  try { & psql -X -q -t -A -d $url -c $sql 2>$null } finally { $ErrorActionPreference = $old }
 }
 
 Step "1. Checking Node and PostgreSQL"
@@ -44,7 +51,10 @@ if (Test-Path $EnvFile) {
   $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
   try { $env:PGPASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
   try {
-    function Admin-Sql([string[]]$more) { & psql -h $pgHost -p $pgPort -U $adminUser -d postgres -v ON_ERROR_STOP=1 -X -q @more }
+    function Admin-Sql([string[]]$more) {
+      $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      try { & psql -h $pgHost -p $pgPort -U $adminUser -d postgres -v ON_ERROR_STOP=1 -X -q @more } finally { $ErrorActionPreference = $old }
+    }
     $ok = Admin-Sql @('-tAc', 'select 1') 2>$null
     if ($LASTEXITCODE -ne 0) { Stop-Setup "Could not connect to PostgreSQL at ${pgHost}:${pgPort} as '$adminUser'. Check that the PostgreSQL service is running and the password is right." }
     $appDbPw = (& node -p "require('crypto').randomBytes(24).toString('hex')").Trim()
@@ -76,7 +86,7 @@ $dbUrl = (($envText | Where-Object { $_ -match '^DATABASE_URL=' } | Select-Objec
 $secretVal = (($envText | Where-Object { $_ -match '^APP_SECRET=' } | Select-Object -First 1) -replace '^APP_SECRET=', '').Trim()
 if (-not $dbUrl) { Stop-Setup ".env has no DATABASE_URL line. Fix it or delete .env and run this script again." }
 if ($secretVal.Length -lt 32) { Stop-Setup ".env APP_SECRET is missing or shorter than 32 characters. Fix it (see .env.example)." }
-$null = & psql $dbUrl -X -q -tAc 'select 1' 2>$null
+$null = Psql-Url $dbUrl 'select 1'
 if ($LASTEXITCODE -ne 0) { Stop-Setup "Cannot connect to the database named in .env. Check that the PostgreSQL service is running. If you changed the database password, delete .env and run this script again." }
 Write-Host ".env ok, database reachable"
 
@@ -86,7 +96,7 @@ Step "6. Hardening the audit log (db:harden)";    Run-Native "db:harden" { npm r
 Step "7. Building the app";                       Run-Native "npm run build" { npm run build }
 
 Step "8. One-time password for the GCAE (p-gcae)"
-$hasPw = (& psql $dbUrl -X -q -tAc "select count(*) from people where id='p-gcae' and password_hash is not null" 2>$null)
+$hasPw = Psql-Url $dbUrl "select count(*) from people where id='p-gcae' and password_hash is not null"
 if ($LASTEXITCODE -eq 0 -and $hasPw -and $hasPw.Trim() -ne '0') {
   Write-Host "p-gcae already has a password. Not issuing another. To reset it: npm run setup:passwords -- p-gcae"
 } else {
@@ -107,6 +117,6 @@ Setup finished.
 Next:
   1. Start Meridian:  powershell -ExecutionPolicy Bypass -File .\laptop\start.ps1
   2. Open http://127.0.0.1:3000 , sign in as the GCAE with the one-time password, and choose a new password.
-  3. Create your Claude token:  npm run token:create -- --person p-gcae --name laptop --days 90
+  3. Create your Claude token:  npm.cmd run token:create -- --person p-gcae --name laptop --days 90
   See docs\LAPTOP-QUICKSTART.md
 "@

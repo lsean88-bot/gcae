@@ -76,7 +76,7 @@ DB_URL="$(grep -E '^DATABASE_URL=' .env | head -n1 | cut -d= -f2-)"
 SECRET_LEN="$(grep -E '^APP_SECRET=' .env | head -n1 | cut -d= -f2- | tr -d '\r\n' | wc -c | tr -d ' ')"
 [ -n "$DB_URL" ] || die ".env has no DATABASE_URL line. Fix it or delete .env and run this script again."
 [ "$SECRET_LEN" -ge 32 ] || die ".env APP_SECRET is missing or shorter than 32 characters. Fix it (see .env.example)."
-psql "$DB_URL" -X -q -tAc "select 1" >/dev/null 2>&1 || die "Cannot connect to the database named in .env. Check that PostgreSQL is running. If you changed the database password, delete .env and run this script again."
+psql -X -q -tA -d "$DB_URL" -c "select 1" >/dev/null 2>&1 || die "Cannot connect to the database named in .env. Check that PostgreSQL is running. If you changed the database password, delete .env and run this script again."
 echo ".env ok, database reachable"
 
 step "4. Installing the app (npm ci)"
@@ -89,7 +89,7 @@ step "7. Building the app"
 npm run build
 
 step "8. One-time password for the GCAE (p-gcae)"
-HAS_PW="$(psql "$DB_URL" -X -q -tAc "select count(*) from people where id='p-gcae' and password_hash is not null" 2>/dev/null || echo 0)"
+HAS_PW="$(psql -X -q -tA -d "$DB_URL" -c "select count(*) from people where id='p-gcae' and password_hash is not null" 2>/dev/null || echo 0)"
 if [ "${HAS_PW:-0}" != "0" ]; then
   echo "p-gcae already has a password. Not issuing another. To reset it: npm run setup:passwords -- p-gcae"
 else
