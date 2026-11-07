@@ -2,7 +2,10 @@ import "dotenv/config"; // loads .env without overriding variables already set (
 import { securityChecks } from "../src/server/security-checks";
 import { eq, like } from "drizzle-orm";
 import { db } from "../src/db";
-import { agentRuns, auditEvents, engagements, evidence, findings, lessons, people, testRuns } from "../src/db/schema";
+import { agentRuns, auditEvents, auditPlans, engagements, evidence, findings, lessons, people, planItems, testRuns } from "../src/db/schema";
+import { runChainFor } from "../src/server/chains";
+import { hiddenEngagementIds } from "../src/server/access";
+import { runAnalyticsFromApi } from "../src/server/api-modules";
 import { figuresNotInSource } from "../src/lib/ai";
 import { parseCsv, runProcedure } from "../src/lib/engine";
 import { canAdvance } from "../src/lib/gates";
@@ -261,6 +264,32 @@ async function main() {
   check("T-67", "An unlinked run can be linked to an engagement once, with an audit row; a second link is refused and the saved result, hash and parameters never change", unlinked.ok && Boolean(link1?.ok) && Boolean(link2 && !link2.ok) && afterRow?.engagementId === "eng-ap" && linkLog.length === 1 && linkLog[0].engagementId === "eng-ap" && beforeLink.length > 0 && afterRow?.inputSha256 === expectedSha, `link1=${link1?.ok} link2=${link2 && !link2.ok ? link2.error : "ALLOWED"} engagement=${afterRow?.engagementId} audit rows=${linkLog.length}`);
   await db.delete(analyticsRuns).where(like(analyticsRuns.inputFilename, `${anTag}%`));
   await db.delete(engagements).where(eq(engagements.id, restrictedId));
+
+  // ---- Restricted-engagement leak through the audit_plan chain (T-68) and non-csv/xlsx API upload (T-69)
+  const lkTag = `lk${Date.now().toString(36)}`;
+  const lkEng = `eng-${lkTag}`;
+  const lkPlan = `plan-${lkTag}`;
+  const lkTitle = `Zq${lkTag} confidential payroll review`;
+  await db.insert(engagements).values({ id: lkEng, code: `UAT-${lkTag}`, title: `UAT restricted ${lkTag}`, entityId: "none", period: "UAT", objective: "UAT", scope: "UAT", status: "Fieldwork", stage: 3, qaStatus: "pending", audience: "UAT", businessContext: "UAT", leadId: "p-gcae", startDate: todayIso(), restricted: true });
+  await db.insert(auditPlans).values({ id: lkPlan, year: 2099, status: "Draft", capacityDays: 100, weights: { risk: 40, age: 30, mandatory: 30, approved: false }, createdBy: "p-gcae", createdAt: todayIso() });
+  await db.insert(planItems).values({ id: `pi-${lkTag}`, planId: lkPlan, entityId: "none", title: lkTitle, quarter: "Q1", budgetDays: 10, rationale: "UAT", engagementId: lkEng });
+  const chain = await runChainFor(gcaeWho, "audit_plan", lkPlan);
+  const chainId = chain.ok ? chain.id : "";
+  const hiddenAud = await hiddenEngagementIds(audWho);
+  const visRuns = (await db.select().from(agentRuns)).filter((r) => !r.engagementId || !hiddenAud.has(r.engagementId));
+  const visEvents = (await db.select().from(auditEvents)).filter((e) => !e.engagementId || !hiddenAud.has(e.engagementId));
+  const [chainRun] = chainId ? await db.select().from(agentRuns).where(eq(agentRuns.id, chainId)) : [];
+  const runLeak = visRuns.some((r) => JSON.stringify(r).includes(lkTitle));
+  const evLeak = visEvents.some((e) => JSON.stringify(e).includes(lkTitle));
+  check("T-68", "A plan item of a restricted engagement, run through the audit_plan chain as GCAE, is attributed to that engagement and its title is absent from every agent run and log row an unrestricted user can see (known positive: the run exists and is attributed)", chain.ok && chainRun?.engagementId === lkEng && hiddenAud.has(lkEng) && !runLeak && !evLeak, `chain ok=${chain.ok} run engagement=${chainRun?.engagementId} auditor-visible runs leaking=${runLeak} auditor-visible log rows leaking=${evLeak}`);
+  const txt = await runAnalyticsFromApi(apiActor, { test: "profile", fileA: { name: `${lkTag}.txt`, contentBase64: Buffer.from("a,b\n1,2\n").toString("base64") } });
+  const txtRows = await db.select().from(analyticsRuns).where(like(analyticsRuns.inputFilename, `${lkTag}%`));
+  check("T-69", "An MCP-style API upload named .txt is rejected and nothing is saved (known negative)", txt.status >= 400 && txtRows.length === 0, `http=${txt.status} saved rows=${txtRows.length}`);
+  if (chainId) await db.delete(agentRuns).where(eq(agentRuns.id, chainId));
+  await db.delete(agentRuns).where(eq(agentRuns.engagementId, lkEng));
+  await db.delete(planItems).where(eq(planItems.planId, lkPlan));
+  await db.delete(auditPlans).where(eq(auditPlans.id, lkPlan));
+  await db.delete(engagements).where(eq(engagements.id, lkEng));
 
   // Cleanup of UAT rows (audit_events stay: the log is append-only).
   await db.delete(agentRuns).where(like(agentRuns.id, `ar-${tag}%`));

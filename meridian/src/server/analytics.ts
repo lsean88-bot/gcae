@@ -107,12 +107,12 @@ function toView(r: typeof analyticsRuns.$inferSelect, names: Map<string, string>
   };
 }
 
-/** Visible: runs of engagements the person can see, plus unlinked runs they created (the GCAE sees all unlinked runs). */
+/** Visible: runs of engagements the person can see, plus unlinked runs they created (an unlinked run is private to its creator). */
 async function visibleRuns(who: Who) {
   if (!READERS.includes(who.authority)) return { rows: [] as (typeof analyticsRuns.$inferSelect)[], names: new Map<string, string>(), codes: new Map<string, string>() };
   const hidden = await hiddenEngagementIds(who);
   const all = await db.select().from(analyticsRuns).orderBy(desc(analyticsRuns.createdAt));
-  const rows = all.filter((r) => (r.engagementId ? !hidden.has(r.engagementId) : r.createdBy === who.id || who.authority === "gcae"));
+  const rows = all.filter((r) => (r.engagementId ? !hidden.has(r.engagementId) : r.createdBy === who.id));
   const ps = rows.length ? await db.select({ id: people.id, name: people.name }).from(people).where(inArray(people.id, [...new Set(rows.map((r) => r.createdBy))])) : [];
   const es = await db.select({ id: engagements.id, code: engagements.code }).from(engagements);
   return { rows, names: new Map(ps.map((p) => [p.id, p.name])), codes: new Map(es.map((e) => [e.id, e.code])) };

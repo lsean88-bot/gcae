@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { readFileSync, statSync } from "node:fs";
-import { basename } from "node:path";
+import { readFileSync, realpathSync, statSync } from "node:fs";
+import { basename, extname, relative, isAbsolute, resolve } from "node:path";
 import { z } from "zod";
 import { configFromEnv, request } from "./client.js";
 
@@ -80,7 +80,16 @@ server.registerTool(
 
 // Analytics, guardrails, plan and ERM
 const MAX_FILE = 20 * 1024 * 1024;
-function readLocal(path: string, sheet?: string) {
+function readLocal(input: string, sheet?: string) {
+  // Resolve symlinks first: the REAL target must be a .csv or .xlsx, so a link to another type is rejected.
+  const path = realpathSync(input);
+  const ext = extname(path).toLowerCase();
+  if (ext !== ".csv" && ext !== ".xlsx") throw new Error(`Only .csv and .xlsx files can be sent (${basename(path)}).`);
+  const dir = process.env.CGAE_DATA_DIR;
+  if (dir) {
+    const rel = relative(realpathSync(resolve(dir)), path);
+    if (rel.startsWith("..") || isAbsolute(rel)) throw new Error("The file is outside the folder set in CGAE_DATA_DIR.");
+  }
   const st = statSync(path);
   if (!st.isFile()) throw new Error(`Not a file: ${basename(path)}`);
   if (st.size > MAX_FILE) throw new Error(`${basename(path)} is larger than 20 MB.`);

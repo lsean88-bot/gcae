@@ -5,9 +5,9 @@ import { completeWithModel } from "@/lib/ai";
 import { CHAIN_STAGES, STAGE_KIND, WORK_TYPE_LABEL, reasonAuditPlan, reasonErm, reasonFindingDraft, type ChainStageName, type WorkType } from "@/lib/chain";
 import { todayIso, uid } from "@/lib/format";
 import { claudeConstitution, FORBIDDEN } from "@/lib/specialists";
-import { externalModelRefused, hiddenEngagementIds } from "@/server/access";
+import { externalModelRefused, hiddenEngagementIds, restrictedEngagementIds } from "@/server/access";
 import { loadAiStatus, loadProviderKey } from "@/server/ai-config";
-import { stageRun, type Who } from "@/server/guardrail";
+import { restrictedMaskTerms, stageRun, type Who } from "@/server/guardrail";
 import { executeHarness, type HarnessStep } from "@/server/harness";
 
 export type ChainType = WorkType;
@@ -33,7 +33,7 @@ async function interpret(label: string, packet: string, external: boolean): Prom
   return result.ok ? { text: result.text, note: `${provider} (${model}) interpreted the packet. This is not an opinion.` } : { text: null, note: `Model call failed: ${result.error}. The deterministic engine still ran.` };
 }
 
-type Gathered = { engagementId: string | null; perceive: string; retrieve: string; reasoning: string[]; proposal: string; severity?: string; evidenceTags?: string[]; inputs: Record<string, string> };
+type Gathered = { engagementId: string | null; touched?: string[]; perceive: string; retrieve: string; reasoning: string[]; proposal: string; severity?: string; evidenceTags?: string[]; inputs: Record<string, string> };
 
 async function gather(who: Who, type: Exclude<WorkType, "engagement_fieldwork">, targetId: string): Promise<{ error: string } | Gathered> {
   if (type === "audit_plan") {
@@ -41,6 +41,9 @@ async function gather(who: Who, type: Exclude<WorkType, "engagement_fieldwork">,
     if (!plan) return { error: "Plan not found." };
     const hidden = await hiddenEngagementIds(who);
     const items = (await db.select().from(planItems).where(eq(planItems.planId, targetId))).filter((i) => !i.engagementId || !hidden.has(i.engagementId));
+    // Attribute the run to a restricted engagement it touches (global set, not the viewer's filtered set).
+    const restricted = await restrictedEngagementIds();
+    const touched = [...new Set(items.flatMap((i) => (i.engagementId && restricted.has(i.engagementId) ? [i.engagementId] : [])))];
     const ents = items.length ? await db.select().from(entities).where(inArray(entities.id, [...new Set(items.map((i) => i.entityId))])) : [];
     const reasoned = reasonAuditPlan({
       year: plan.year,
@@ -51,7 +54,8 @@ async function gather(who: Who, type: Exclude<WorkType, "engagement_fieldwork">,
       items: items.map((i) => ({ id: i.id, title: i.title, entityName: ents.find((e) => e.id === i.entityId)?.name || i.entityId, quarter: i.quarter, budgetDays: i.budgetDays, status: i.status, riskScore: i.riskScore, lastAuditDate: i.lastAuditDate, mandatory: i.mandatory })),
     });
     return {
-      engagementId: null,
+      engagementId: touched[0] ?? null,
+      touched,
       perceive: `Work type: audit plan. Plan ${plan.id}, year ${plan.year}, status ${plan.status}, capacity ${plan.capacityDays} days.`,
       retrieve: `Linked records only: ${items.length} plan item(s) of this plan and ${ents.length} entity record(s) they point to. Nothing else was read.`,
       ...reasoned,
@@ -112,15 +116,22 @@ export async function runChainFor(who: Who, type: WorkType, targetId: string): P
     const steps: ChainStep[] = result.steps.map((s: HarnessStep) => ({ stage: s.stage ?? "propose", agent: s.agent, title: `${s.agent} · ${s.skill}`, detail: s.summary, status: s.status }));
     return { ok: true, id: result.id, steps, message: result.message };
   }
-  const got = await gather(who, type, targetId);
-  if ("error" in got) return refuse(got.error);
+  const raw = await gather(who, type, targetId);
+  if ("error" in raw) return refuse(raw.error);
+  // Mask every restricted engagement (global set) except the one this run is attributed to.
+  const attributed = raw.engagementId ? (await db.select({ id: engagements.id, code: engagements.code, title: engagements.title }).from(engagements).where(eq(engagements.id, raw.engagementId)))[0] : undefined;
+  const keep = new Set(attributed ? [attributed.id, attributed.code, attributed.title] : []);
+  const terms = (await restrictedMaskTerms()).filter((t) => t && t.length >= 3 && !keep.has(t));
+  const mask = (s: string) => terms.reduce((acc, t) => acc.replace(new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "[restricted]"), s);
+  const got: Gathered = { ...raw, perceive: mask(raw.perceive), retrieve: mask(raw.retrieve), reasoning: raw.reasoning.map(mask), proposal: mask(raw.proposal) };
 
   const steps: ChainStep[] = [
     { stage: "perceive", agent: "Perceive", title: "Read the request", detail: got.perceive, status: "done" },
     { stage: "retrieve", agent: "Retrieve", title: "Read linked records only", detail: got.retrieve, status: "done" },
     { stage: "reason", agent: "Reason", title: "Deterministic engine", detail: got.reasoning.join("\n"), status: "done" },
   ];
-  const external = got.engagementId ? await externalModelRefused(got.engagementId) : false;
+  let external = false;
+  for (const id of new Set([...(raw.touched ?? []), ...(raw.engagementId ? [raw.engagementId] : [])])) if (await externalModelRefused(id)) external = true;
   const model = await interpret(WORK_TYPE_LABEL[type], `${got.perceive}\n${got.retrieve}\n${got.reasoning.join("\n")}\n${got.proposal}`, external);
   steps.push({ stage: "propose", agent: "Propose", title: "Staged proposal", detail: got.proposal, status: "suggested" });
   if (model.text) steps.push({ stage: "propose", agent: "Model", title: "Model interpretation", detail: model.text, status: "suggested" });

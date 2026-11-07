@@ -28,7 +28,12 @@ export async function runAnalyticsAction(fd: FormData) {
   if ("error" in a) return { ok: false as const, error: a.error };
   const b = await fileFrom(fd, "fileB", "sheetB");
   if (b && "error" in b) return { ok: false as const, error: b.error };
-  const params = JSON.parse(String(fd.get("params") || "{}")) as RunParams;
+  let params: RunParams;
+  try {
+    params = JSON.parse(String(fd.get("params") || "{}")) as RunParams;
+  } catch {
+    return { ok: false as const, error: "The test settings could not be read. Check the column choices and try again." };
+  }
   const res = await runAnalyticsAs(who, { engagementId: String(fd.get("engagementId") || "") || null, test: String(fd.get("test") || ""), fileA: a, fileB: b, params });
   if (res.ok) revalidatePath("/analytics");
   return res;

@@ -11,8 +11,25 @@ export async function GET(req: Request) {
 // Runs a test on an uploaded file and saves a read-only run. Never approves, rates or issues anything.
 export async function POST(req: Request) {
   return handle(req, { scope: "draft", roles: DRAFT_ROLES }, async (actor) => {
-    const raw = await req.text();
-    if (raw.length > MAX_BODY) return json(413, { ok: false, error: "Request is too large." });
+    const declared = Number(req.headers.get("content-length"));
+    if (Number.isFinite(declared) && declared > MAX_BODY) return json(413, { ok: false, error: "Request is too large." });
+    // Stream the body and abort as soon as the limit is passed (content-length can be absent or false).
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    const reader = req.body?.getReader();
+    if (reader) {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > MAX_BODY) {
+          await reader.cancel().catch(() => undefined);
+          return json(413, { ok: false, error: "Request is too large." });
+        }
+        chunks.push(value);
+      }
+    }
+    const raw = Buffer.concat(chunks).toString("utf8");
     let body: unknown;
     try {
       body = JSON.parse(raw);
