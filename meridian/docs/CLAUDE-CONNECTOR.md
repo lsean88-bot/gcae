@@ -1,5 +1,7 @@
 # Connect Claude Desktop or Claude Code to Meridian
 
+> **Laptop mode (current decision):** Meridian runs only on the GCAE's own laptop at http://127.0.0.1:3000, with no WARP, certificate or shared server. Follow `LAPTOP-QUICKSTART.md` and install the Claude Code plugin in `claude-plugin/meridian-gia`. The steps below are for a shared private server and are kept for reference.
+
 This lets Internal Audit staff ask Claude, on their own PC, to read the Meridian audit file and file drafts. It uses the person's existing Claude subscription. No extra Claude cost and no API key.
 
 ## What Claude can and cannot do

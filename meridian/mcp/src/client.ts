@@ -5,8 +5,11 @@ import tls from "node:tls";
 
 export type ClientConfig = { url: string; token: string; caFile?: string };
 
+// Claude Code passes an unset plugin variable through as the literal text "${NAME}". Treat that as not set.
+const unexpanded = (v: string | undefined) => (v && !v.startsWith("${") ? v : "");
+
 export function configFromEnv(env = process.env): ClientConfig {
-  return { url: (env.MERIDIAN_URL || "").replace(/\/+$/, ""), token: env.MERIDIAN_TOKEN || "", caFile: env.MERIDIAN_CA_FILE || undefined };
+  return { url: unexpanded(env.MERIDIAN_URL).replace(/\/+$/, ""), token: unexpanded(env.MERIDIAN_TOKEN), caFile: unexpanded(env.MERIDIAN_CA_FILE) || undefined };
 }
 
 export class MeridianError extends Error {}
@@ -17,7 +20,7 @@ export class MeridianError extends Error {}
  */
 export function request(cfg: ClientConfig, method: "GET" | "POST", path: string, query?: Record<string, string | undefined>, body?: unknown): Promise<unknown> {
   if (!cfg.url) return Promise.reject(new MeridianError("MERIDIAN_URL is not set."));
-  if (!cfg.token) return Promise.reject(new MeridianError("MERIDIAN_TOKEN is not set. Create a token on the Meridian Account page."));
+  if (!cfg.token) return Promise.reject(new MeridianError("MERIDIAN_TOKEN is not set. Create a token (npm run token:create, or the Meridian Account page), set it as the MERIDIAN_TOKEN environment variable, then restart Claude Code."));
   let target: URL;
   try {
     target = new URL(`/api/v1/${path}`, cfg.url);
@@ -63,7 +66,7 @@ export function request(cfg: ClientConfig, method: "GET" | "POST", path: string,
     req.on("timeout", () => req.destroy(new Error("timeout")));
     req.on("error", (error: NodeJS.ErrnoException) => {
       const code = error.code || error.message;
-      const hint = /CERT|SELF_SIGNED|UNABLE_TO_VERIFY|ISSUER/.test(String(code)) ? " The certificate is not trusted: set NODE_EXTRA_CA_CERTS to the Meridian root CA file." : /ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EHOSTUNREACH|timeout/.test(String(code)) ? " Check that WARP is connected." : "";
+      const hint = /CERT|SELF_SIGNED|UNABLE_TO_VERIFY|ISSUER/.test(String(code)) ? " The certificate is not trusted: set NODE_EXTRA_CA_CERTS to the Meridian root CA file." : /ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EHOSTUNREACH|timeout/.test(String(code)) ? " Check that Meridian is running (start it with the laptop start script) and that MERIDIAN_URL is right. If Meridian is on a shared server, check that WARP is connected." : "";
       reject(new MeridianError(`Could not reach Meridian (${code}).${hint}`));
     });
     if (payload) req.write(payload);

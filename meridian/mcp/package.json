@@ -8,6 +8,8 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "build": "tsc",
+    "bundle:plugin": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --legal-comments=none --banner:js=\"import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);\" --outfile=../claude-plugin/meridian-gia/server/meridian-mcp.mjs",
+    "smoke:plugin": "node scripts/smoke.mjs ../claude-plugin/meridian-gia/server/meridian-mcp.mjs",
     "smoke": "node scripts/smoke.mjs",
     "start": "node dist/index.js"
   },
@@ -17,6 +19,7 @@
   },
   "devDependencies": {
     "@types/node": "22.19.15",
+    "esbuild": "0.25.12",
     "typescript": "5.9.3"
   }
 }

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "meridian": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/meridian-mcp.mjs"],
+      "env": {
+        "MERIDIAN_URL": "${MERIDIAN_URL:-http://127.0.0.1:3000}",
+        "MERIDIAN_TOKEN": "${MERIDIAN_TOKEN}"
+      }
+    }
+  }
+}

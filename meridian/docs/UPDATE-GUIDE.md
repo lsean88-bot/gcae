@@ -27,7 +27,7 @@ npm run build
 6. Start the new folder with `npm run start`.
 7. Open `/api/health`. It must say ok.
 8. Open **UAT evidence** and click **Run UAT again**.
-9. Expected result on this release: 32 passed, 0 failed.
+9. Expected result on this release: 55 passed, 0 failed.
 10. Open one known engagement, such as `GRP-AP-2026`, and confirm the findings are still there.
 
 `drizzle-kit push` adds new tables and columns. It should not delete your engagements. Still take the backup first. If a future kit says it will reset the database, stop and ask for a migration note before you continue.

@@ -70,7 +70,7 @@ The site listens on port 3000 unless `PORT` is set.
 1. Open `http://SERVER:3000/api/health`. It must show `{"ok":true}`.
 2. Open the site. You must see **Sign in with your role.** You must not see the audit file before sign-in.
 3. Issue one-time passwords (step A7), then sign in as Group Chief Audit Executive with that person's one-time password. The Password page opens first. Choose your own password (at least 12 characters, not containing your role or id).
-4. Open **UAT evidence** and click **Run UAT again**. Expected result: 32 passed, 0 failed (22 calculation and gate checks, 10 security checks).
+4. Open **UAT evidence** and click **Run UAT again**. Expected result: 55 passed, 0 failed (T-01 to T-55: calculation and gate checks, security, Claude connector, restricted engagements, strategic modules).
 5. Put HTTPS in front of the site. Allow only the audit network.
 
 ### A7. First-day setup for the audit team
@@ -228,4 +228,4 @@ For staff who already have a Claude subscription, the local connector in `mcp/` 
 3. Copy the existing `.env` into that folder.
 4. Run `npm install`, `npx drizzle-kit push`, `npm run db:harden`, and `npm run build`. Add `APP_SECRET` to `.env` if it is not there. On the first start of this release run `npm run setup:passwords` once; it reissues one-time passwords to everyone.
 5. Stop the old site and start the new folder.
-6. Sign in and run UAT again. Expected result on this release: 32 passed, 0 failed.
+6. Sign in and run UAT again. Expected result on this release: 55 passed, 0 failed.

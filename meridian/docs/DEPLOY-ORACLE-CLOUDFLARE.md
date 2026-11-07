@@ -58,7 +58,7 @@ curl -s http://127.0.0.1:3000/api/health      # expect {"ok":true}
    - iOS: open the file > Settings > Profile Downloaded > Install; then Settings > General > About > Certificate Trust Settings > enable full trust.
    - Android: Settings > Security > Encryption and credentials > Install a certificate > CA certificate (path varies by phone).
    - Firefox keeps its own store; import there too (Settings > Certificates > Authorities) or enable system roots.
-4. With WARP connected, open `https://172.30.0.10`, sign in, open **UAT evidence** and click **Run UAT again** (expect 32 passed, 0 failed). Or from the server: `docker compose --env-file .env --profile setup run --rm migrate npm run uat`.
+4. With WARP connected, open `https://172.30.0.10`, sign in, open **UAT evidence** and click **Run UAT again** (expect 55 passed, 0 failed). Or from the server: `docker compose --env-file .env --profile setup run --rm migrate npm run uat`.
 
 ## Part 6. Backups and restore test
 1. Run once: `./scripts/backup-now.sh` (writes encrypted file into `deploy/backups/`, keeps 14).
