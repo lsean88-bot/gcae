@@ -186,6 +186,22 @@ Stop Meridian, then in `C:\gcae`: `git pull`, and run setup again (it is safe to
 | `meridian` not listed in `/mcp` | Run `claude plugin list` or check the MCP config. Reinstall, then restart Claude. |
 | `HTTP 429` | More than 120 requests in a minute. Wait a minute. |
 
+## Optional: Offline AI with Ollama
+
+This lets the report page draft the Executive Summary and Root Cause wording with a model that runs on your own laptop. No data leaves the laptop and no Claude account is used. It is optional; without it the template text is used and the button is hidden.
+
+1. Install Ollama (PowerShell): `winget install Ollama.Ollama`
+2. Download the model: `ollama pull llama3.1:8b`
+3. In `meridian\.env` add these 2 lines, then stop and restart the app:
+   `AI_BASE_URL=http://127.0.0.1:11434/v1`
+   `AI_MODEL=llama3.1:8b`
+4. Open the report page as the GCAE and use **Draft narrative with AI**. It stores a NEW Draft version marked "AI-assisted (local model: ...)".
+
+Notes:
+- About 16 GB of RAM is advised for this model. Smaller laptops may be slow.
+- Drafts must be reviewed by a person. The app rejects a draft that adds a number, changes a severity word or states a numeric confidence, and keeps the template text instead. These checks do not prove the wording is right.
+- Only a `127.0.0.1` or `localhost` address counts as local. Any other address is treated as a remote model and is refused for restricted engagements.
+
 ## Notes for the owner
 
 - Laptop data protection (disk encryption, screen lock, backups) is the owner's decision. Backups are not encrypted.

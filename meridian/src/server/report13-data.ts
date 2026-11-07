@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 import { desc, eq, inArray, max } from "drizzle-orm";
 import { db } from "@/db";
 import { actions, controls, engagements, entities, evidence, findings, people, planItems, reportVersions, risks, testRuns } from "@/db/schema";
-import { engagementHidden } from "@/server/access";
+import { engagementHidden, externalModelRefused } from "@/server/access";
+import { aiStatus, completeWithModel } from "@/lib/ai";
+import { aiLabel, draftNarrative, type AiDrafter } from "@/server/report13-ai";
 import { auditAs, restrictedMaskTerms } from "@/server/guardrail";
 import { deriveEvidenceTags, maskRestricted, type TagSource } from "@/lib/iron-rules";
 import { boardBrief, buildReport13, releaseGate, type Report13Input, type R13Finding, type R13Test } from "@/lib/report13";
@@ -116,14 +118,21 @@ function deepMask<T>(v: T, terms: Iterable<string>): T {
   return v;
 }
 
-export async function createReportVersion(viewer: Viewer, engagementId: string): Promise<{ ok: true; id: string; versionNo: number; blocking: number } | Fail> {
+export async function createReportVersion(viewer: Viewer, engagementId: string, ai?: AiDrafter): Promise<{ ok: true; id: string; versionNo: number; blocking: number; aiNote?: string } | Fail> {
   const loaded = await loadReport13Input(viewer, engagementId);
   if (!loaded.ok) return loaded;
-  const terms = await restrictedMaskTerms();
-  const report = buildReport13(loaded.input, { globalRestrictedTerms: terms });
+  // Mask every OTHER restricted engagement. This engagement's own terms stay visible to a viewer who can open it.
+  const terms = await restrictedMaskTerms(engagementId);
+  let report = buildReport13(loaded.input, { globalRestrictedTerms: terms });
+  let aiAssist: { label: string; accepted: number[]; rejected: { section: number; reason: string }[] } | undefined;
+  if (ai) {
+    const d = await draftNarrative(report, ai);
+    report = d.report;
+    aiAssist = { label: d.accepted.length ? aiLabel(ai.name) : `AI draft attempted (local model: ${ai.name}); no section passed the checks, template text kept`, accepted: d.accepted, rejected: d.rejected };
+  }
   const brief = boardBrief(loaded.input, { globalRestrictedTerms: terms });
   const gate = releaseGate(report, loaded.input);
-  const content = { entity: maskRestricted(loaded.input.entityName || "Entity not provided", terms), report, brief };
+  const content = { entity: maskRestricted(loaded.input.entityName || "Entity not provided", terms), report, brief, ...(aiAssist ? { aiAssist } : {}) };
   const sha256 = createHash("sha256").update(canonicalJson({ content, gate })).digest("hex");
 
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -135,13 +144,31 @@ export async function createReportVersion(viewer: Viewer, engagementId: string):
         id, engagementId, versionNo, status: "Draft", contentJson: content as unknown as Record<string, unknown>, gateJson: gate,
         sha256, createdBy: viewer.name, createdAt: new Date().toISOString(),
       });
-      await auditAs(viewer, "report13.version.create", "engagement", engagementId, `Report version ${versionNo} stored as Draft. Blocking items: ${gate.blocking.length}. sha256 ${sha256.slice(0, 12)}.`);
-      return { ok: true, id, versionNo, blocking: gate.blocking.length };
+      await auditAs(viewer, "report13.version.create", "engagement", engagementId, `Report version ${versionNo} stored as Draft. Blocking items: ${gate.blocking.length}. sha256 ${sha256.slice(0, 12)}.${aiAssist ? ` ${aiAssist.label}. Sections rewritten: ${aiAssist.accepted.join(", ") || "none"}. Rejected: ${aiAssist.rejected.map((r) => `section ${r.section} (${r.reason})`).join("; ") || "none"}.` : ""}`);
+      return { ok: true, id, versionNo, blocking: gate.blocking.length, aiNote: aiAssist?.label };
     } catch (e) {
       if (attempt === 2) throw e; // version_no collision from a concurrent create: retry with a fresh maximum
     }
   }
   return { ok: false, error: "Could not store the version." };
+}
+
+/** GCAE only. Uses the local model only (127.0.0.1 or localhost); no remote provider is ever called from here. */
+export async function createAiReportVersion(viewer: Viewer, engagementId: string) {
+  if (viewer.authority !== "gcae") return { ok: false as const, error: "Only the GCAE can draft the narrative with AI." };
+  const st = aiStatus();
+  if (!(st.compatible && st.localOnly && st.compatibleModel)) return { ok: false as const, error: "No local model is configured." };
+  if (await externalModelRefused(engagementId, { localOnly: true })) return { ok: false as const, error: "Model use is refused for this engagement." };
+  const name = st.compatibleModel;
+  const complete: AiDrafter["complete"] = async (prompt) => {
+    try {
+      const r = await completeWithModel("compatible", name, prompt, process.env.AI_API_KEY);
+      return r.ok ? { ok: true, text: r.text } : { ok: false, error: r.error };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "The model call failed." };
+    }
+  };
+  return createReportVersion(viewer, engagementId, { name, complete });
 }
 
 export async function setReportStatus(viewer: Viewer, versionId: string, status: ReportStatus): Promise<{ ok: true } | Fail> {
@@ -174,7 +201,7 @@ export async function listReportVersions(viewer: Viewer, engagementId: string) {
 export async function exportVersionDocx(viewer: Viewer, versionId: string, kind: "report" | "brief"): Promise<{ ok: true; buffer: Buffer; filename: string } | Fail> {
   const [row] = await db.select().from(reportVersions).where(eq(reportVersions.id, versionId));
   if (!row || (await engagementHidden(viewer, row.engagementId))) return NOT_FOUND;
-  const terms = await restrictedMaskTerms();
+  const terms = await restrictedMaskTerms(row.engagementId);
   const c = deepMask(row.contentJson as { entity: string; report: Parameters<typeof renderReport13Docx>[0]; brief: Parameters<typeof renderBoardBriefDocx>[0] }, terms);
   const meta = { entity: c.entity, status: row.status as ReportStatus, version: `v${row.versionNo}`, generatedAt: row.createdAt.slice(0, 10) };
   const buffer = kind === "brief" ? await renderBoardBriefDocx(c.brief, meta) : await renderReport13Docx(c.report, meta);
@@ -187,7 +214,7 @@ export async function latestVersionView(viewer: Viewer, engagementId: string) {
   if (await engagementHidden(viewer, engagementId)) return null;
   const [row] = await db.select().from(reportVersions).where(eq(reportVersions.engagementId, engagementId)).orderBy(desc(reportVersions.versionNo)).limit(1);
   if (!row) return null;
-  const terms = await restrictedMaskTerms();
+  const terms = await restrictedMaskTerms(engagementId);
   const c = deepMask(row.contentJson as { entity: string; report: { sections: { number: number; title: string; paragraphs: string[]; tables?: { headers: string[]; rows: string[][] }[] }[] } }, terms);
   return { id: row.id, versionNo: row.versionNo, status: row.status, gate: row.gateJson, sections: c.report.sections };
 }

@@ -33,6 +33,7 @@ import { recurringLessons } from "../src/lib/lessons";
 import { draftFinding } from "../src/server/api-drafts";
 import type { ApiActor } from "../src/server/api-tokens";
 import { decideAgentRunAs } from "../src/server/decisions";
+import { externalModelRefused } from "../src/server/access";
 import { restrictedMaskTerms, capFindingSeverity, overrideGuardrailAs, readGuardrail, stageRun } from "../src/server/guardrail";
 
 type Case = { id: string; name: string; pass: boolean; evidence: string };
@@ -330,7 +331,7 @@ async function main() {
   const rsTag = `rs${Date.now().toString(36)}`;
   const rsEng = `eng-${rsTag}`;
   const rsTitle = `Zq${rsTag} sealed treasury review`;
-  await db.insert(engagements).values({ id: rsEng, code: `UAT-${rsTag}`, title: rsTitle, entityId: "none", period: "UAT", objective: "UAT", scope: "UAT", status: "Fieldwork", stage: 3, qaStatus: "pending", audience: "UAT", businessContext: "UAT", leadId: "p-gcae", startDate: todayIso(), restricted: true });
+  await db.insert(engagements).values({ id: rsEng, code: `UAT-${rsTag}`, title: rsTitle, entityId: "none", period: "UAT", objective: `Objective: ${rsTitle}`, scope: "UAT", status: "Fieldwork", stage: 3, qaStatus: "pending", audience: "UAT", businessContext: "UAT", leadId: "p-gcae", startDate: todayIso(), restricted: true });
   const rsVer = await createReportVersion(gcaeWho, rsEng);
   const rsGcae = rsVer.ok ? await getDocx(rsVer.id, gTok) : null;
   const rsAud = rsVer.ok ? await getDocx(rsVer.id, aTok) : null;
@@ -342,7 +343,10 @@ async function main() {
   const apXml = docxText(gBuf);
   const rsXml = rsGcae ? docxText(Buffer.from(await rsGcae.arrayBuffer())) : "";
   const briefXml = docxText(bBuf);
-  check("T-74", "A restricted engagement's title is absent from word/document.xml of another engagement's report and brief (known positive: the global restricted set holds the title, so even its own DOCX is masked; the XML is real, non-empty text)", [...maskTerms].some((t) => t.includes(rsTag)) && rsXml.length > 1000 && !rsXml.includes(rsTag) && !apXml.includes(rsTag) && !briefXml.includes(rsTag) && apXml.length > 1000, `in mask set=${[...maskTerms].some((t) => t.includes(rsTag))} own docx contains tag=${rsXml.includes(rsTag)} other report leaks=${apXml.includes(rsTag)} other brief leaks=${briefXml.includes(rsTag)} xml bytes=${apXml.length}`);
+  check("T-74", "A restricted engagement's own report, opened as GCAE, CONTAINS its title (positive control: own terms are not masked in its own DOCX); another engagement's report and brief do NOT contain it (the global set still masks every other restricted engagement); the XML is real, non-empty text", [...maskTerms].some((t) => t.includes(rsTag)) && rsXml.length > 1000 && rsXml.includes(rsTag) && rsXml.includes("sealed treasury review") && !apXml.includes(rsTag) && !briefXml.includes(rsTag) && apXml.length > 1000, `in mask set=${[...maskTerms].some((t) => t.includes(rsTag))} own docx contains title=${rsXml.includes(rsTag)} other report leaks=${apXml.includes(rsTag)} other brief leaks=${briefXml.includes(rsTag)} xml bytes=${apXml.length}`);
+  const refDefault = await externalModelRefused(rsEng);
+  const refLocal = await externalModelRefused(rsEng, { localOnly: true });
+  check("T-76", "A restricted engagement refuses a remote model (default) and allows a local-only provider; a non-restricted engagement allows both", refDefault === true && refLocal === false && (await externalModelRefused("eng-ap")) === false, `restricted default refused=${refDefault} restricted local refused=${refLocal}`);
 
   const audSet = vAp.ok ? await setReportStatus(audWho, vAp.id, "Reviewed") : null;
   const audFinal = vAp.ok ? await setReportStatus(audWho, vAp.id, "Final") : null;

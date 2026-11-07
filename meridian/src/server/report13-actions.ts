@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { actorNow } from "@/server/authz";
-import { createReportVersion, setReportStatus, type ReportStatus } from "@/server/report13-data";
+import { createAiReportVersion, createReportVersion, setReportStatus, type ReportStatus } from "@/server/report13-data";
 import type { ActionResult } from "@/server/mutations";
 
 async function viewer() {
@@ -18,6 +18,15 @@ export async function generateVersionAction(engagementId: string): Promise<Actio
   if (!r.ok) return { ok: false, error: r.error };
   revalidatePath("/reports");
   return { ok: true, id: r.id, message: `Version ${r.versionNo} stored as Draft. Blocking items: ${r.blocking}.` };
+}
+
+export async function generateAiVersionAction(engagementId: string): Promise<ActionResult> {
+  const v = await viewer();
+  if (!v) return { ok: false, error: "Sign in required." };
+  const r = await createAiReportVersion(v, String(engagementId));
+  if (!r.ok) return { ok: false, error: r.error };
+  revalidatePath("/reports");
+  return { ok: true, id: r.id, message: `Version ${r.versionNo} stored as Draft. ${r.aiNote ?? ""} Blocking items: ${r.blocking}. Review the wording before use.` };
 }
 
 export async function setReportStatusAction(versionId: string, status: string): Promise<ActionResult> {

@@ -176,9 +176,10 @@ export function rulesForRejection(run: RunLike): string[] {
 }
 
 /** Codes, titles and ids of ALL restricted engagements. Built from the global set, never from a viewer's filtered data. */
-export async function restrictedMaskTerms(): Promise<string[]> {
+export async function restrictedMaskTerms(exceptEngagementId?: string): Promise<string[]> {
   const rows = await db.select({ id: engagements.id, code: engagements.code, title: engagements.title }).from(engagements).where(eq(engagements.restricted, true));
-  return rows.flatMap((r) => [r.id, r.code, r.title]);
+  // exceptEngagementId: a report for engagement E may show E's own terms (the viewer already has access). Every OTHER restricted engagement stays masked.
+  return rows.filter((r) => r.id !== exceptEngagementId).flatMap((r) => [r.id, r.code, r.title]);
 }
 
 /**

@@ -14,6 +14,7 @@
     "uat": "tsx scripts/uat.ts",
     "test:rules": "tsx scripts/test-iron-rules.ts",
     "test:report13": "tsx scripts/test-report13.ts",
+    "test:report13-ai": "tsx scripts/test-report13-ai.ts",
     "test:report13-docx": "tsx scripts/test-report13-docx.ts",
     "test:analytics": "tsx scripts/test-analytics.ts"
   },

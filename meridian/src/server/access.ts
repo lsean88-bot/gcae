@@ -51,8 +51,12 @@ export async function guardRecord(person: Who, ref: RecordRef): Promise<{ ok: fa
   return null;
 }
 
-/** External model calls send data out. A restricted engagement needs the GCAE's explicit per-engagement flag. */
-export async function externalModelRefused(engagementId: string): Promise<boolean> {
+/**
+ * External model calls send data out. A restricted engagement needs the GCAE's explicit per-engagement flag.
+ * A local-only provider (127.0.0.1 or localhost) keeps data on the laptop, so it is allowed. Any remote provider is still refused.
+ */
+export async function externalModelRefused(engagementId: string, opts?: { localOnly?: boolean }): Promise<boolean> {
+  if (opts?.localOnly === true) return false;
   const [row] = await db.select({ r: engagements.restricted, a: engagements.allowExternalModel }).from(engagements).where(eq(engagements.id, engagementId));
   return Boolean(row?.r && !row.a);
 }

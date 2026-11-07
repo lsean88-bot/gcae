@@ -1,6 +1,7 @@
 import { ReportsView } from "@/components/reports-view";
 import { Report13Panel } from "@/components/report13-panel";
 import { loadAiStatus } from "@/server/ai-config";
+import { aiStatus } from "@/lib/ai";
 import { getReports } from "@/lib/data";
 import { actorNow } from "@/server/authz";
 import { latestVersionView, listReportVersions } from "@/server/report13-data";
@@ -20,7 +21,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ e
     <>
       <ReportsView data={data} providers={await loadAiStatus()} />
       <div className="page" style={{ paddingTop: 0 }}>
-        <Report13Panel engagementId={data.engagement.id} engagements={data.engagements} latest={latest} versions={versions.map(({ gate: _g, ...v }) => v)} isGcae={who.authority === "gcae"} />
+        <Report13Panel engagementId={data.engagement.id} engagements={data.engagements} latest={latest} versions={versions.map(({ gate: _g, ...v }) => v)} isGcae={who.authority === "gcae"} aiModel={(() => { const a = aiStatus(); return a.compatible && a.localOnly && a.compatibleModel ? a.compatibleModel : null; })()} />
       </div>
     </>
   );

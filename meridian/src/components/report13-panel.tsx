@@ -3,12 +3,13 @@
 import { useRouter } from "next/navigation";
 import { Notice, Pill, useBusyRefresh } from "@/components/ui";
 import { formatDate } from "@/lib/format";
-import { generateVersionAction, setReportStatusAction } from "@/server/report13-actions";
+import { generateAiVersionAction, generateVersionAction, setReportStatusAction } from "@/server/report13-actions";
 
 type Latest = { id: string; versionNo: number; status: string; gate: { blocking: string[]; warnings: string[] }; sections: { number: number; title: string; paragraphs: string[]; tables?: { headers: string[]; rows: string[][] }[] }[] };
 type Version = { id: string; versionNo: number; status: string; sha256: string; createdAt: string; signedOffBy: string | null; signedOffAt: string | null };
 
-export function Report13Panel({ engagementId, engagements, latest, versions, isGcae }: {
+export function Report13Panel({ engagementId, engagements, latest, versions, isGcae, aiModel }: {
+  aiModel?: string | null;
   engagementId: string;
   engagements: { id: string; code: string; title: string }[];
   latest: Latest | null;
@@ -28,6 +29,7 @@ export function Report13Panel({ engagementId, engagements, latest, versions, isG
           {engagements.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.title}</option>)}
         </select>
         <button className="btn primary" type="button" disabled={busy} onClick={() => run(() => generateVersionAction(engagementId))}>Generate new version</button>
+        {isGcae && aiModel ? <button className="btn" type="button" disabled={busy} onClick={() => run(() => generateAiVersionAction(engagementId))}>Draft narrative with AI</button> : null}
       </div>
       <Notice result={result} />
       {!latest ? <p className="small">No version has been generated for this engagement.</p> : (

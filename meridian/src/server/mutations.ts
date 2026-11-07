@@ -33,6 +33,7 @@ import { buildPrompt, type BriefInput } from "@/lib/reports";
 import { ensureSeed } from "@/lib/seed";
 import { loadAiStatus, loadProviderKey, preferProvider, removeProviderKey, saveProviderKey } from "@/server/ai-config";
 import { engagementForObject, externalModelRefused, guardRecord, hiddenEngagementIds } from "@/server/access";
+import { compatibleConfig } from "@/lib/ai";
 import { briefFor } from "@/server/brief";
 import { executeHarness } from "@/server/harness";
 import { WORK_TYPES } from "@/lib/chain";
@@ -1113,7 +1114,7 @@ export async function draftWithModel(input: {
     const hidden = await guardRecord(who, { engagementId: input.engagementId });
     if (hidden) return hidden;
   }
-  if (await externalModelRefused(input.engagementId)) {
+  if (await externalModelRefused(input.engagementId, { localOnly: input.provider === "compatible" && compatibleConfig().localOnly })) {
     return { ok: false, error: "This engagement is restricted. Sending its data to an external model needs the GCAE to allow external models for this engagement first." };
   }
   const brief = await briefFor(input.engagementId, input.audience);
