@@ -5,18 +5,34 @@ export type AiStatus = {
   openai: boolean;
   gemini: boolean;
   compatible: boolean;
+  /** True when the compatible provider points at 127.0.0.1 or localhost: data never leaves this machine. */
+  localOnly: boolean;
   claudeModel: string;
   openaiModel: string;
   geminiModel: string;
   compatibleModel: string;
 };
 
+/** Compatible provider detection. A localhost or 127.0.0.1 base URL needs no key; any other host still needs AI_API_KEY. */
+export function compatibleConfig(): { configured: boolean; localOnly: boolean } {
+  const raw = process.env.AI_BASE_URL?.trim();
+  if (!raw) return { configured: false, localOnly: false };
+  let url: URL;
+  try { url = new URL(raw); } catch { return { configured: false, localOnly: false }; }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return { configured: false, localOnly: false };
+  const host = url.hostname.toLowerCase();
+  const localOnly = host === "127.0.0.1" || host === "localhost" || host === "[::1]" || host === "::1";
+  return { configured: localOnly || Boolean(process.env.AI_API_KEY), localOnly };
+}
+
 export function aiStatus(): AiStatus {
+  const cc = compatibleConfig();
   return {
     claude: Boolean(process.env.ANTHROPIC_API_KEY),
     openai: Boolean(process.env.OPENAI_API_KEY),
     gemini: Boolean(process.env.GEMINI_API_KEY),
-    compatible: Boolean(process.env.AI_BASE_URL && process.env.AI_API_KEY),
+    compatible: cc.configured,
+    localOnly: cc.localOnly,
     claudeModel: process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5",
     openaiModel: process.env.OPENAI_MODEL || "gpt-4.1",
     geminiModel: process.env.GEMINI_MODEL || "gemini-2.5-flash",
@@ -102,7 +118,8 @@ async function completeOpenAICompatible(provider: AiProvider, model: string, pro
   const compatible = provider === "compatible";
   const resolved = key || (compatible ? process.env.AI_API_KEY : process.env.OPENAI_API_KEY);
   const base = (compatible ? process.env.AI_BASE_URL : "https://api.openai.com/v1")?.replace(/\/$/, "");
-  if (!resolved || !base) {
+  const local = compatible && compatibleConfig().localOnly;
+  if ((!resolved && !local) || !base) {
     return {
       ok: false as const,
       error: compatible
@@ -114,8 +131,9 @@ async function completeOpenAICompatible(provider: AiProvider, model: string, pro
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${resolved}`,
+      ...(resolved ? { authorization: `Bearer ${resolved}` } : {}),
     },
+    redirect: local ? "error" : "follow",
     body: JSON.stringify({
       model,
       temperature: 0.2,

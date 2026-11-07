@@ -85,6 +85,8 @@ This plugin's own skills: `audit-second-brain` (catalog and recall), `document-r
 - Every build phase gets an independent QA agent separate from the builder; commit only after QA findings are fixed. QA found real defects in every phase (auth gaps, audit-log leak, AC-pack leak). (Meridian Phases 1, 3, A, strategic)
 - Confidentiality masking must use the global restricted set, never the viewer's already-filtered data; test by string-searching every output (page, JSON snapshot, Excel). (Meridian restricted engagements + AC pack)
 - Never commit secrets: strip passwords before the first commit, since git history keeps them. Shipped/UAT code must contain no path that disables a hardening trigger. (Meridian Phase 1, strategic)
+- Viewer-filtered restricted sets leaked again in a new agent chain (audit_plan): every new chain or export must mask via `restrictedMaskTerms()` (global set) and get an HTTP leak re-test as a user without access, with a GCAE positive control. (CGAE Command QA, 2026-11-07; 2nd sighting after Meridian AC pack)
+- GIA guard limits: each subagent stays under 35 tool calls (guard stops at 40), and build/QA agents run in the foreground, because background completion notices trigger a scope hold. (CGAE Command build, 2026-11-07, seen 3 times)
 
 ### 7.5 User preferences observed
 - Auditee-facing material: clean, objective, simple language, each issue pinned to a worksheet.

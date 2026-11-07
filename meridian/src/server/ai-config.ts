@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { settings } from "@/db/schema";
-import type { AiProvider, AiStatus } from "@/lib/ai";
+import { compatibleConfig, type AiProvider, type AiStatus } from "@/lib/ai";
 import { openSecret, sealSecret } from "@/lib/secret-box";
 
 const CLAUDE_KEY = "secret_anthropic_key";
@@ -24,11 +24,13 @@ export async function loadAiStatus(): Promise<AiStatus & { preferred: "claude" |
             : openai ? "openai"
               : gemini ? "gemini"
                 : "none";
+  const cc = compatibleConfig();
   return {
     claude,
     openai,
     gemini,
-    compatible: Boolean(process.env.AI_BASE_URL && process.env.AI_API_KEY),
+    compatible: cc.configured,
+    localOnly: cc.localOnly,
     claudeModel: process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5",
     openaiModel: process.env.OPENAI_MODEL || "gpt-4.1",
     geminiModel: process.env.GEMINI_MODEL || "gemini-2.5-flash",

@@ -1,6 +1,6 @@
 import { eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { actions, agentRuns, engagementAccess, engagements, evidence, findings, lessons, pbcRequests, testRuns } from "@/db/schema";
+import { actions, agentRuns, analyticsRuns, engagementAccess, engagements, evidence, findings, lessons, pbcRequests, testRuns } from "@/db/schema";
 
 /**
  * ONE place that decides whether a person may see an engagement and everything under it.
@@ -51,8 +51,12 @@ export async function guardRecord(person: Who, ref: RecordRef): Promise<{ ok: fa
   return null;
 }
 
-/** External model calls send data out. A restricted engagement needs the GCAE's explicit per-engagement flag. */
-export async function externalModelRefused(engagementId: string): Promise<boolean> {
+/**
+ * External model calls send data out. A restricted engagement needs the GCAE's explicit per-engagement flag.
+ * A local-only provider (127.0.0.1 or localhost) keeps data on the laptop, so it is allowed. Any remote provider is still refused.
+ */
+export async function externalModelRefused(engagementId: string, opts?: { localOnly?: boolean }): Promise<boolean> {
+  if (opts?.localOnly === true) return false;
   const [row] = await db.select({ r: engagements.restricted, a: engagements.allowExternalModel }).from(engagements).where(eq(engagements.id, engagementId));
   return Boolean(row?.r && !row.a);
 }
@@ -68,6 +72,7 @@ export async function engagementForObject(objectType: string, objectId: string):
     case "test": return first(db.select({ e: testRuns.engagementId }).from(testRuns).where(eq(testRuns.id, objectId)));
     case "pbc": return first(db.select({ e: pbcRequests.engagementId }).from(pbcRequests).where(eq(pbcRequests.id, objectId)));
     case "agent": return first(db.select({ e: agentRuns.engagementId }).from(agentRuns).where(eq(agentRuns.id, objectId)));
+    case "analytics": return first(db.select({ e: analyticsRuns.engagementId }).from(analyticsRuns).where(eq(analyticsRuns.id, objectId)));
     case "lesson": return first(db.select({ e: lessons.engagementId }).from(lessons).where(eq(lessons.id, objectId)));
     default: return null;
   }
@@ -78,7 +83,7 @@ export async function childRecordIds(engagementIds: Set<string>): Promise<Set<st
   const ids = [...engagementIds];
   const out = new Set<string>(ids);
   if (!ids.length) return out;
-  const [f, a, e, t, p, r, l] = await Promise.all([
+  const [f, a, e, t, p, r, l, an] = await Promise.all([
     db.select({ id: findings.id }).from(findings).where(inArray(findings.engagementId, ids)),
     db.select({ id: actions.id }).from(actions).where(inArray(actions.engagementId, ids)),
     db.select({ id: evidence.id }).from(evidence).where(inArray(evidence.engagementId, ids)),
@@ -86,7 +91,8 @@ export async function childRecordIds(engagementIds: Set<string>): Promise<Set<st
     db.select({ id: pbcRequests.id }).from(pbcRequests).where(inArray(pbcRequests.engagementId, ids)),
     db.select({ id: agentRuns.id }).from(agentRuns).where(inArray(agentRuns.engagementId, ids)),
     db.select({ id: lessons.id }).from(lessons).where(inArray(lessons.engagementId, ids)),
+    db.select({ id: analyticsRuns.id }).from(analyticsRuns).where(inArray(analyticsRuns.engagementId, ids)),
   ]);
-  for (const rows of [f, a, e, t, p, r, l]) for (const row of rows) out.add(row.id);
+  for (const rows of [f, a, e, t, p, r, l, an]) for (const row of rows) out.add(row.id);
   return out;
 }

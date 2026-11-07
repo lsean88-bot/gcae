@@ -16,3 +16,7 @@ Claude.ai on the web cannot reach a Meridian server on your laptop, so the conne
 ## What this plugin does not do
 
 It does not replace the web app. It does not contain a hidden model key. It does not issue audit reports. It tells Claude how to behave when a person asks for audit help.
+
+## CGAE Command connector tools (v1.1.0)
+
+The connector has 20 tools, all read or staged draft. Added: `list_analytics_runs`, `get_analytics_run`, `run_analytics` (local file read by the connector), `lint_text`, `get_audit_plan`, `get_risk_register`. `list_lessons` was already present. No tool approves, overrides or issues anything, and restricted engagements are filtered on the server by the token. Commands: `/meridian-status`, `/meridian-draft`, `/meridian-analytics`, `/meridian-lint`.

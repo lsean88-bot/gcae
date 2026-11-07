@@ -14,6 +14,7 @@ const NAV = [
   { href: "/engagements", label: "Engagements", group: "Work" },
   { href: "/evidence", label: "Evidence ledger", group: "Work" },
   { href: "/testing", label: "Testing bench", group: "Fieldwork" },
+  { href: "/analytics", label: "Analytics", group: "Fieldwork" },
   { href: "/findings", label: "Findings", group: "Fieldwork" },
   { href: "/actions", label: "Action tracker", group: "Fieldwork" },
   { href: "/risks", label: "Risk register", group: "Assurance" },
@@ -35,6 +36,7 @@ const NAV = [
 // Roles that may see each strategic page. Executives read the ERM heat map and released AC packs only.
 const ROLE_ONLY: Record<string, string[]> = {
   "/erm": ["gcae", "manager", "auditor", "qa", "owner", "executive"],
+  "/analytics": ["gcae", "manager", "auditor", "qa"],
   "/plan": ["gcae", "manager", "auditor", "qa"],
   "/ac-pack": ["gcae", "manager", "auditor", "qa", "executive"],
 };

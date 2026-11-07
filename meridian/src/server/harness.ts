@@ -2,7 +2,6 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
   actions,
-  agentRuns,
   auditEvents,
   controls,
   engagements,
@@ -22,6 +21,8 @@ import { shortHash } from "@/lib/hash";
 import { ensureLessons, weakensIronRule } from "@/lib/lessons";
 import { claudeConstitution, FORBIDDEN } from "@/lib/specialists";
 import { buildBriefing, qualityChecks, type BriefInput } from "@/lib/reports";
+import { STAGE_KIND, type ChainStageName } from "@/lib/chain";
+import { stageRun } from "@/server/guardrail";
 
 export type HarnessStep = {
   agent: string;
@@ -29,7 +30,23 @@ export type HarnessStep = {
   summary: string;
   detail: string;
   status: "done" | "blocked" | "suggested";
+  stage?: ChainStageName;
 };
+
+/** The fieldwork harness is a chain: perceive, retrieve linked records only, reason, propose (staged), guardrail, human decision. */
+const STAGE_OF: Record<string, ChainStageName> = {
+  screen_gates: "perceive",
+  read_knowledge: "perceive",
+  read_process: "retrieve",
+  grade_evidence: "retrieve",
+  run_approved_test: "reason",
+  reperform_calculation: "reason",
+  quality_check: "propose",
+  propose_lesson: "propose",
+  interpret: "propose",
+};
+/** Skills whose text is agent-authored and must pass the guardrails. The rest quote the file. */
+const DRAFT_SKILLS = ["quality_check", "propose_lesson", "interpret"];
 
 export async function executeHarness(engagementId: string, actorName: string, opts: { noExternal?: boolean } = {}) {
   await ensureLessons();
@@ -339,22 +356,48 @@ export async function executeHarness(engagementId: string, actorName: string, op
     });
   }
 
-  await db.insert(agentRuns).values({
-    id: harnessId,
-    agent: "Harness",
-    skill: "end_to_end",
-    engagementId,
-    trigger: `${actorName} started the end-to-end harness.`,
+  for (const step of steps) step.stage = STAGE_OF[step.skill] ?? "propose";
+  const proposalText = steps.filter((step) => DRAFT_SKILLS.includes(step.skill)).map((step) => `${step.summary}\n${step.detail}`);
+  const guardrail = await stageRun(
+    {
+      id: harnessId,
+      agent: "Harness",
+      skill: "end_to_end",
+      engagementId,
+      trigger: `${actorName} started the end-to-end harness.`,
+      status: "suggested",
+      startedAt: todayIso(),
+      completedAt: todayIso(),
+      summary: steps[0]?.status === "blocked" ? "Harness stopped at a gate. No report was issued." : "Harness finished the specialist sequence. A person must still decide.",
+      reasoning: steps.map((step, index) => ({
+        n: index + 1,
+        title: `${step.stage}: ${step.agent} · ${step.skill}`,
+        detail: step.summary,
+        kind: step.status === "blocked" ? ("limit" as const) : STAGE_KIND[step.stage ?? "propose"],
+      })),
+      inputs: { engagement: engagementId, forbidden: FORBIDDEN.join(","), chain: "engagement_fieldwork" },
+      output: { note: "HARNESS NOTE — NOT AN ISSUED OPINION", chain: "engagement_fieldwork", claude: modelNote.notes.join("\n").slice(0, 4000) },
+      limitations: "The harness cannot issue, approve materiality, close an action, or waive an iron rule.",
+      decidedBy: null,
+      decisionNote: null,
+    },
+    { texts: proposalText, chain: true },
+  );
+  steps.push({
+    agent: "Guardrail",
+    skill: "guardrail_check",
+    stage: "guardrail",
+    status: guardrail.status === "blocked" ? "blocked" : "done",
+    summary: guardrail.violations.length ? `${guardrail.violations.length} guardrail finding(s) recorded on the run.` : "No guardrail finding.",
+    detail: guardrail.violations.map((v) => `[${v.rule}] ${v.message}`).join(" ") || "Fraud ladder, confidence wording and severity cap checked on every drafted text.",
+  });
+  steps.push({
+    agent: "Human",
+    skill: "human_decision",
+    stage: "decision",
     status: "suggested",
-    startedAt: todayIso(),
-    completedAt: todayIso(),
-    summary: steps[0]?.status === "blocked" ? "Harness stopped at a gate. No report was issued." : "Harness finished the specialist sequence. A person must still decide.",
-    reasoning: steps.map((step, index) => ({ n: index + 1, title: `${step.agent} · ${step.skill}`, detail: step.summary, kind: step.status === "blocked" ? "limit" as const : "handoff" as const })),
-    inputs: { engagement: engagementId, forbidden: FORBIDDEN.join(",") },
-    output: { note: "HARNESS NOTE — NOT AN ISSUED OPINION", claude: modelNote.notes.join("\n").slice(0, 4000) },
-    limitations: "The harness cannot issue, approve materiality, close an action, or waive an iron rule.",
-    decidedBy: null,
-    decisionNote: null,
+    summary: guardrail.status === "blocked" ? "Approval is blocked until the GCAE overrides with a reason." : "Waiting for a person to accept or reject.",
+    detail: "The harness has not applied, approved or issued anything.",
   });
   await db.insert(auditEvents).values({
     id: uid("log"),
@@ -365,7 +408,7 @@ export async function executeHarness(engagementId: string, actorName: string, op
     objectId: engagementId,
     beforeState: null,
     afterState: harnessId,
-    detail: steps.map((step) => `${step.agent}: ${step.summary}`).join(" | ").slice(0, 500),
+    detail: `Guardrail ${guardrail.status}. ${steps.map((step) => `${step.agent}: ${step.summary}`).join(" | ")}`.slice(0, 500),
     engagementId,
   });
 

@@ -39,10 +39,18 @@ jobs:
       - run: npm run build
       - run: npx drizzle-kit push --force
       - run: npm run db:harden
+      - name: Start app for HTTP UAT checks
+        run: |
+          (PORT=3000 HOSTNAME=127.0.0.1 nohup npm run start > app.log 2>&1 &)
+          for i in $(seq 1 60); do curl -s -o /dev/null http://127.0.0.1:3000 && exit 0; sleep 1; done
+          cat app.log; exit 1
+        env:
+          NODE_ENV: production
       - name: UAT (exits non-zero on any failed check)
         run: npm run uat
         env:
           NODE_ENV: production
+          UAT_BASE_URL: http://127.0.0.1:3000
       - run: npm audit --omit=dev --audit-level=high
       - name: Build the MCP connector
         working-directory: meridian/mcp

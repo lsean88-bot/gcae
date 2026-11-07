@@ -1,6 +1,6 @@
-# Meridian user guide
+# CGAE Command user guide
 
-This guide is for the Group Chief Audit Executive, audit managers, auditors, QA reviewers, and process owners. You do not need to write code.
+CGAE Command is the display name of the Meridian app. This guide is for the Group Chief Audit Executive (GCAE), audit managers, auditors, QA reviewers, and process owners. You do not need to write code.
 
 ## Who you are in the app
 
@@ -8,7 +8,7 @@ You sign in with your role and your own password. The server decides what your b
 
 | Person in the demonstration file | Role | What they can do |
 | --- | --- | --- |
-| Amira Hassan | Group Chief Audit Executive | Approve materiality, connect a model, issue a report, accept a lesson |
+| Amira Hassan | Group Chief Audit Executive | Approve materiality, connect a model, issue a report, accept a lesson, override a guardrail |
 | Daniel Okonkwo | Audit manager | Approve a test result, save an opinion draft, accept a lesson |
 | Priya Nair, Luis Ortega, Mei Lin Tan | Auditors | Open engagements, register evidence, run tests, draft findings, start the harness |
 | Hannah Berg | Independent QA | Re-perform a test. The person who ran the test cannot clear it |
@@ -20,6 +20,14 @@ Switch to Amira Hassan before you connect Claude or ChatGPT, approve materiality
 ## The rule that never changes
 
 Nothing is issued without a person. The model may rewrite tone. It may not add a figure, change a score, approve materiality, close an action, or call an indicator a fraud finding.
+
+## Guardrails
+
+- A guardrail violation blocks approval of an agent draft.
+- Only the GCAE can override a guardrail. The reason must be at least 10 characters. The override is written to the audit log and captured as a kaizen lesson.
+- Evidence tags CON (third-party confirmation) and PHY (physical) are set only from the evidence class the GCAE chooses. Free text cannot set them.
+- Variance is shown as net and gross. Net alone can hide offsetting errors.
+- Restricted engagements are masked everywhere, using the global restricted list.
 
 ## Daily path for one audit
 
@@ -84,6 +92,8 @@ A missing population is not a pass and not an extra failure. Say so in the workp
 
 Bands: 20–25 Critical, 12–19 High, 6–11 Medium, 1–5 Low.
 
+If the evidence is only REP (management) or ANA (auditor analysis), severity is capped at High, the score is clamped to 19, and the finding shows "pending fieldwork corroboration". Corroborate with inspection, physical or third-party evidence before rating it Critical.
+
 ### 6. Agree the action
 
 1. Click **Action tracker**.
@@ -111,6 +121,20 @@ Follow-up cadence:
 5. Save a draft into the opinion only after you have checked that no new figure appeared.
 6. On the engagement **Gates** tab, move the stage only when the gate is met.
 7. At stage 7, Amira Hassan ticks that the limitations were read, writes a note, and clicks **Issue under my name**.
+
+## Analytics (/analytics)
+
+Use this to run tests on a data file you hold, such as a ledger or a payment list.
+
+1. Click **Analytics**. Upload a CSV or XLSX file, 20 MB maximum.
+2. Choose the tests: profile (with an error-string scan), Benford (MAD and Nigrini bands; a warning shows when there are fewer than 300 rows), duplicates (exact and leading-zero normalised), or reconcile (with a tolerance, net and gross).
+3. Save the run. Saved runs are read-only.
+4. To use a run in an engagement, link it once. A linked run cannot be linked again.
+
+Facts and limits:
+
+- The file stays on your laptop. It is never sent to a model. Only its SHA-256, the parameters and the result are stored.
+- Every result is labelled "[ANA] indicator, not a finding". An indicator needs follow-up and evidence before it becomes a finding.
 
 ## Restrict an engagement (GCAE only)
 
@@ -210,11 +234,12 @@ For a live audit, open a new engagement and register that period’s extract.
 
 | I want to… | Click |
 | --- | --- |
-| Connect Claude or ChatGPT | Connect AI |
+| Connect Claude or ChatGPT (optional, for in-app drafts) | Connect AI |
 | Let Claude Desktop or Claude Code read the file and file drafts from my PC | Account, then `CLAUDE-CONNECTOR.md` |
 | See what needs a decision | Command |
 | Open or plan an audit | Engagements or Audit universe |
 | Paste a file | Evidence ledger |
+| Run a test on a data file | Analytics |
 | Test a control | Testing bench |
 | Score a finding | Findings |
 | Chase an action | Action tracker |
@@ -224,5 +249,51 @@ For a live audit, open a new engagement and register that period’s extract.
 | Let the specialists run | Agent harness |
 | Accept a lesson | Kaizen |
 | Read or draft the report | Report studio |
+| Generate the 13-section report and Word files | Reports (13-section report panel) |
 | See the proof tests | UAT evidence |
 | Download the Excel tracker | Action tracker, then Download workbook |
+
+## 13-section report and Word export
+
+The 13-section report is built from engagement data only. No AI is needed.
+
+**Steps**
+1. Open **Reports** and choose the engagement in the **13-section report** panel.
+2. Click **Generate new version**. A new Draft is stored with the next version number.
+3. Read the 13 sections, in this order: Executive Summary, Background, Scope and Objectives, Methodology, Detailed Findings, Risk and Impact, Root Cause, Control Gap Assessment, Recommendation, Management Response, Agreed Action Plan, Timeline and Accountability, Conclusion.
+4. Read the gate panel: **Blocking** and **Warnings**.
+5. Read the version list. Each version shows its status, sign-off and hash.
+6. Download the full report (.docx) and the Board brief (.docx).
+7. GCAE only: click **Mark Reviewed**, then **Mark Final**. The Final button is disabled while blocking items are open.
+
+**Rules the report applies**
+- The Executive Summary opens with a plain-language summary and a legend for score bands and evidence tags.
+- Net and gross variance are shown where linked test runs have amounts.
+- A capped finding shows "pending fieldwork corroboration".
+- A missing field shows "[Not provided – required before issue]". Fill the source data, then generate a new version. Earlier versions are not changed.
+- Blocking items are: gaps; rule violations (fraud wording, "% confidence"); a recommendation without an owner, a due date or a measurable action; summary counts that do not tie to the detail; a capped Critical.
+- Versions are immutable. Status moves forward only: Draft to Reviewed, or Draft or Reviewed to Final. The app and the database both allow Draft to move straight to Final.
+- Sign-off is recorded only at Final. A Final version is frozen.
+- Downloads come from the stored snapshot. Draft and Reviewed files carry "DRAFT – not for issue".
+- Restricted engagements: a report masks every other restricted engagement's terms. An engagement's own report shows its own terms.
+
+## Offline AI drafting (optional)
+
+A local model can rewrite the Executive Summary and Root Cause wording. Nothing leaves the laptop.
+
+**Set up (once)**
+1. Install Ollama and download the model: `llama3.1:8b`.
+2. In `meridian\.env`, set the local model address to `http://127.0.0.1:11434/v1` and `AI_MODEL=llama3.1:8b`.
+3. Stop and restart the app.
+
+**Use**
+1. Sign in as the GCAE and open **Reports**.
+2. Click **Draft narrative with AI**. The button shows only when a model is set and only for the GCAE.
+3. The result is saved as a new Draft marked "AI-assisted".
+
+**Rules**
+- The model rewrites only the Executive Summary and Root Cause.
+- A draft is rejected if it adds numbers, changes severity words or breaks the rules.
+- Only `127.0.0.1` and `localhost` count as local. Remote models are refused for restricted engagements.
+- A person must review every AI draft before use.
+- Status: tested with a simulated model only. No live model test has been run.
