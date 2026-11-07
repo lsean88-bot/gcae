@@ -45,7 +45,7 @@ export type AgentStep = {
   n: number;
   title: string;
   detail: string;
-  kind: "read" | "rule" | "calc" | "limit" | "handoff";
+  kind: "read" | "rule" | "calc" | "limit" | "handoff" | "propose" | "guard" | "decide";
 };
 
 export const people = pgTable("people", {
@@ -236,6 +236,8 @@ export const findings = pgTable("findings", {
   testRunId: text("test_run_id"),
   status: text("status").notNull(),
   isolatedOrRecurring: text("isolated_or_recurring").notNull(),
+  // Set when severityCap() lowered Critical to High because the evidence is only REP/ANA. Null otherwise.
+  severityFlag: text("severity_flag"),
 });
 
 export const actions = pgTable("actions", {

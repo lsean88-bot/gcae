@@ -1,5 +1,5 @@
 import type { ImpactMap } from "@/db/schema";
-import { BANNED_PHRASES, IMPACT_DIMENSIONS, bandFor, cadenceLabel } from "@/lib/methodology";
+import { BANNED_PHRASES, IMPACT_DIMENSIONS, cadenceLabel } from "@/lib/methodology";
 import { formatDate, isOverdue, money } from "@/lib/format";
 
 export type FindingFact = {
@@ -102,8 +102,9 @@ export function countBands(findings: FindingFact[]) {
 
 export function recommendedRating(findings: FindingFact[]) {
   if (findings.length === 0) return "Not yet rated";
-  const highest = Math.max(...findings.map((finding) => finding.priorityScore));
-  return bandFor(highest);
+  // From the stored band, not the raw score: a Critical capped to High by the severity cap must not return through the overall rating.
+  const order = ["Unscored", "Low", "Medium", "High", "Critical"];
+  return findings.map((finding) => finding.priorityBand).reduce((best, band) => (order.indexOf(band) > order.indexOf(best) ? band : best), "Unscored");
 }
 
 export function buildBriefing(input: BriefInput): ReportSection[] {
