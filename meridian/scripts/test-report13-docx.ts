@@ -74,5 +74,14 @@ const decode = (s: string) => s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").rep
     assert.ok(decode(await xml(b, "word/header1.xml")).includes("DRAFT – not for issue"));
     (x.match(/<w:tr[ >][\s\S]*?<\/w:tr>/g) || []).forEach((r) => assert.ok(r.includes("<w:cantSplit")));
   });
-  console.log(`\n${pass} tests passed`);
+  await t("empty meta never prints undefined or null", async () => {
+  const empty = { entity: "Test Sdn Bhd" } as unknown as Parameters<typeof renderReport13Docx>[1];
+  for (const buf of [await renderReport13Docx(report, empty), await renderBoardBriefDocx(brief, empty)]) {
+    const x = await xml(buf);
+    assert.ok(!/undefined|null/i.test(x), "word/document.xml contains undefined/null");
+    assert.ok(decode(x).includes("[Not provided – required before issue]"));
+    assert.ok(decode(x).includes("Draft"));
+  }
+});
+console.log(`\n${pass} tests passed`);
 })().catch((e) => { console.error(e); process.exit(1); });

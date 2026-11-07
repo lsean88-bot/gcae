@@ -164,4 +164,22 @@ t("board brief carries the same opening", () => {
   for (const line of opening) assert.ok(b.paragraphs.includes(line) && b.text.includes(line), line);
   assert.ok(boardBrief(good, { asOf: "2028-01-01" }).text.includes("asked to decide"));
 });
+t("stored cap flag (known positive): sentence lists the ref with the wording; table and section 5 show it", () => {
+  const f0 = good.findings[0];
+  const inp = base([{ ...f0, priorityBand: "High", severityFlag: "pending fieldwork corroboration; original score 40 clamped to 19" }]);
+  const r = buildReport13(inp);
+  const s0 = r.sections[0];
+  const line = s0.paragraphs.find((p) => p.includes("pending fieldwork corroboration"));
+  assert.ok(line && line.includes(f0.code), String(line));
+  assert.ok(!s0.paragraphs.includes("No finding has been held back by the severity cap."));
+  assert.ok(s0.tables![1].rows.some((row) => row[2].includes("pending fieldwork corroboration")));
+  assert.ok(JSON.stringify(r.sections[4]).includes("pending fieldwork corroboration"));
+  assert.deepEqual(r.cappedCodes, [f0.code]);
+});
+t("stored cap flag (known negative): no flag keeps the no-held-back sentence", () => {
+  const inp = base([{ ...good.findings[0], priorityBand: "High", severityFlag: null }]);
+  const r = buildReport13(inp);
+  assert.ok(r.sections[0].paragraphs.includes("No finding has been held back by the severity cap."));
+  assert.deepEqual(r.cappedCodes, []);
+});
 console.log(`${pass} tests passed`);

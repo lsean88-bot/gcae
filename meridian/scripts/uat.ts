@@ -319,7 +319,7 @@ async function main() {
   check("T-70", "Generating a version for a seeded engagement stores a new Draft with 13 sections numbered 1 to 13", vAp.ok && apRow.versionNo === vApNo + 1 && apRow.status === "Draft" && secs.length === 13 && secs.every((s, i) => s.number === i + 1), `ok=${vAp.ok} version=${apRow?.versionNo} sections=${secs.length}`);
 
   const blockedRes = vAp.ok ? await setReportStatus(gcaeWho, vAp.id, "Final") : null;
-  const afterBlocked = await latestOf("eng-ap");
+  const afterBlocked = (await db.select().from(reportVersions).where(eq(reportVersions.id, vAp.ok ? vAp.id : "")))[0];
   const blockingNow = apRow?.gateJson.blocking.length ?? 0;
   check("T-71", "Final is refused by the server while gate_json.blocking is non-empty, and the status stays Draft (known positive: blocking is non-empty)", blockingNow > 0 && blockedRes?.ok === false && afterBlocked.status === "Draft" && afterBlocked.signedOffBy === null, `blocking=${blockingNow} final ok=${blockedRes?.ok} status=${afterBlocked?.status}`);
 
@@ -351,17 +351,20 @@ async function main() {
   const refLocal = await externalModelRefused(rsEng, { localOnly: true });
   check("T-76", "A restricted engagement refuses a remote model (default) and allows a local-only provider; a non-restricted engagement allows both", refDefault === true && refLocal === false && (await externalModelRefused("eng-ap")) === false, `restricted default refused=${refDefault} restricted local refused=${refLocal}`);
 
-  const audSet = vAp.ok ? await setReportStatus(audWho, vAp.id, "Reviewed") : null;
-  const audFinal = vAp.ok ? await setReportStatus(audWho, vAp.id, "Final") : null;
-  const afterAud = await latestOf("eng-ap");
-  const gcaeRev = vAp.ok ? await setReportStatus(gcaeWho, vAp.id, "Reviewed") : null;
-  check("T-75", "A non-GCAE user cannot set a report status (Reviewed or Final) and the row is unchanged; GCAE can mark Reviewed (positive control)", audSet?.ok === false && audFinal?.ok === false && afterAud.status === "Draft" && gcaeRev?.ok === true, `auditor reviewed ok=${audSet?.ok} final ok=${audFinal?.ok} status after auditor=${afterAud?.status} gcae reviewed ok=${gcaeRev?.ok}`);
+  // T-75 and T-77 are self-contained: each creates its OWN Draft version and acts on that id only (never "latest").
+  const v75 = await createReportVersion(gcaeWho, "eng-ap");
+  const audSet = v75.ok ? await setReportStatus(audWho, v75.id, "Reviewed") : null;
+  const audFinal = v75.ok ? await setReportStatus(audWho, v75.id, "Final") : null;
+  const afterAud = v75.ok ? (await db.select().from(reportVersions).where(eq(reportVersions.id, v75.id)))[0] : undefined;
+  const gcaeRev = v75.ok ? await setReportStatus(gcaeWho, v75.id, "Reviewed") : null;
+  check("T-75", "A non-GCAE user cannot set a report status (Reviewed or Final) and the row is unchanged; GCAE can mark Reviewed (positive control)", audSet?.ok === false && audFinal?.ok === false && afterAud?.status === "Draft" && gcaeRev?.ok === true, `auditor reviewed ok=${audSet?.ok} final ok=${audFinal?.ok} status after auditor=${afterAud?.status} gcae reviewed ok=${gcaeRev?.ok}`);
 
   // T-77: the database itself refuses Final on a version with blocking items (direct SQL, no app code in the path).
   const dbTry = async (sql: string, args: unknown[]) => { try { await pool.query(sql, args); return "ALLOWED"; } catch (e) { return e instanceof Error ? e.message : String(e); } };
-  const stillDraft = vAp.ok ? (await pool.query("SELECT status, jsonb_array_length(gate_json->'blocking') AS n FROM report_versions WHERE id = $1", [vAp.id])).rows[0] : undefined;
-  const directFinal = vAp.ok ? await dbTry("UPDATE report_versions SET status = 'Final', signed_off_by = 'UAT', signed_off_at = $2 WHERE id = $1", [vAp.id, new Date().toISOString()]) : "NO VERSION";
-  const afterDirect = vAp.ok ? (await pool.query("SELECT status FROM report_versions WHERE id = $1", [vAp.id])).rows[0] : undefined;
+  const v77 = await createReportVersion(gcaeWho, "eng-ap");
+  const stillDraft = v77.ok ? (await pool.query("SELECT status, jsonb_array_length(gate_json->'blocking') AS n FROM report_versions WHERE id = $1", [v77.id])).rows[0] : undefined;
+  const directFinal = v77.ok && Number(stillDraft?.n) > 0 ? await dbTry("UPDATE report_versions SET status = 'Final', signed_off_by = 'UAT', signed_off_at = $2 WHERE id = $1", [v77.id, new Date().toISOString()]) : "NO VERSION OR NO BLOCKING";
+  const afterDirect = v77.ok ? (await pool.query("SELECT status FROM report_versions WHERE id = $1", [v77.id])).rows[0] : undefined;
   check("T-77", "A direct SQL UPDATE to Final on a version with blocking items fails at the database level and the row is unchanged (known positive: blocking is non-empty)", Number(stillDraft?.n) > 0 && directFinal.includes("blocking items") && afterDirect?.status !== "Final", `blocking=${stillDraft?.n} result=${directFinal.slice(0, 90)} status=${afterDirect?.status}`);
 
   await db.delete(sessions).where(eq(sessions.tokenHash, hashToken(gTok)));

@@ -42,6 +42,8 @@ export type R13Finding = Pick<FindingFact, "id" | "code" | "title" | "priorityBa
   amounts?: { label?: string; expected: number; actual: number }[];
   currency?: string;
   managementResponse?: string;
+  /** Stored severity flag from save time, e.g. "pending fieldwork corroboration; original score N clamped to 19". */
+  severityFlag?: string | null;
 };
 export type R13Test = Pick<TestFact, "id" | "procedure" | "result" | "populationCount" | "recordsTested" | "exceptionsCount" | "limitations"> & {
   evidenceTags: string[];
@@ -84,7 +86,8 @@ const blank = (v: unknown) => v === undefined || v === null || String(v).trim() 
 function capAll(findings: R13Finding[]): Capped[] {
   return findings.map((f) => {
     const c = severityCap(f.priorityBand, f.evidenceTags || []);
-    return { ...f, band: c.severity, capped: c.capped };
+    const stored = String(f.severityFlag ?? "").toLowerCase().includes(SEVERITY_CAP_FLAG);
+    return { ...f, band: c.severity, capped: c.capped || stored };
   });
 }
 function sevLabel(f: Capped) {
@@ -164,7 +167,7 @@ export function buildReport13(input: Report13Input, opts: Report13Options = {}):
       `This report covers ${entity} for ${period}. ${fs.length} finding${fs.length === 1 ? " is" : "s are"} recorded.`,
       `Overall rating, taken from the highest finding band after the severity cap: ${rating}.`,
       fs.some((f) => f.capped)
-        ? `Findings with only management-reported or auditor-analysis evidence are held at High and marked ${SEVERITY_CAP_FLAG}: ${fs.filter((f) => f.capped).map(refs).join(", ")}.`
+        ? `Findings held at High and marked ${SEVERITY_CAP_FLAG} (evidence is only management-reported or auditor analysis): ${fs.filter((f) => f.capped).map(refs).join(", ")}.`
         : "No finding has been held back by the severity cap.",
       ...LEGEND,
     ],

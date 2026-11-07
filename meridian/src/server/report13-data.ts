@@ -65,7 +65,7 @@ export async function loadReport13Input(viewer: Viewer, engagementId: string): P
       condition: u(f.condition), criteria: u(f.criteria), cause: u(f.rootCause), effect: u(effect), recommendation: u(f.recommendation),
       owner: u(act ? ownerName.get(act.ownerId) : undefined), dueDate: u(act ? act.revisedDue || act.originalDue : undefined),
       evidenceTags: tags, workpaperRef: u(f.testRunId ? `Test ${f.testRunId}` : f.evidenceIds),
-      rootCauseClass: u(f.rootCauseClass), managementResponse: u(f.managementPosition),
+      rootCauseClass: u(f.rootCauseClass), managementResponse: u(f.managementPosition), severityFlag: f.severityFlag ?? null,
       ...(amounts ? { amounts, currency: u(run?.currency || run?.workpaper?.currency) } : {}),
     };
   });

@@ -54,9 +54,9 @@ function coverTable(meta: DocxMeta, rating: string): Table {
   const rows: [string, string][] = [
     ["Entity", meta.entity],
     ["Overall rating", rating],
-    ["Version", String(meta.version)],
+    ["Version", val(meta.version)],
     ["Status", meta.status],
-    ["Date", meta.generatedAt],
+    ["Date", val(meta.generatedAt)],
   ];
   const widths = [2400, WIDTH - 2400];
   return new Table({
@@ -64,6 +64,12 @@ function coverTable(meta: DocxMeta, rating: string): Table {
     columnWidths: widths,
     rows: rows.map(([k, v]) => new TableRow({ cantSplit: true, children: [cell(k, widths[0], { fill: LABEL_FILL, bold: true }), cell(v, widths[1])] })),
   });
+}
+
+const NP = "[Not provided – required before issue]";
+const val = (v: unknown) => (v === undefined || v === null || String(v).trim() === "" || /^(undefined|null)$/i.test(String(v).trim()) ? NP : String(v));
+function norm(meta: DocxMeta): DocxMeta {
+  return { ...meta, entity: val(meta.entity), status: (meta.status || "Draft") as DocxMeta["status"], version: val(meta.version), generatedAt: val(meta.generatedAt) };
 }
 
 async function pack(title: string, meta: DocxMeta, children: (Paragraph | Table)[]): Promise<Buffer> {
@@ -97,7 +103,8 @@ async function pack(title: string, meta: DocxMeta, children: (Paragraph | Table)
   return Buffer.from(await Packer.toBuffer(doc));
 }
 
-export async function renderReport13Docx(report: Report13, meta: DocxMeta): Promise<Buffer> {
+export async function renderReport13Docx(report: Report13, metaIn: DocxMeta): Promise<Buffer> {
+  const meta = norm(metaIn);
   const children: (Paragraph | Table)[] = [
     para("Internal Audit Report", { bold: true, size: 44, after: 240 }),
     coverTable(meta, report.rating),
@@ -114,7 +121,8 @@ export async function renderReport13Docx(report: Report13, meta: DocxMeta): Prom
   return pack("Internal Audit Report", meta, children);
 }
 
-export async function renderBoardBriefDocx(brief: BoardBrief, meta: DocxMeta): Promise<Buffer> {
+export async function renderBoardBriefDocx(brief: BoardBrief, metaIn: DocxMeta): Promise<Buffer> {
+  const meta = norm(metaIn);
   const children: (Paragraph | Table)[] = [
     para(brief.title || "Board note", { bold: true, size: 44, after: 240 }),
     coverTable(meta, brief.rating),
