@@ -463,3 +463,17 @@ export const acPacks = pgTable("ac_packs", {
   releasedBy: text("released_by"),
   releasedAt: text("released_at"),
 });
+
+/** Saved analytics runs. Immutable after creation; the only permitted change is linking an unlinked run to an engagement once. */
+export const analyticsRuns = pgTable("analytics_runs", {
+  id: text("id").primaryKey(),
+  engagementId: text("engagement_id"),
+  testType: text("test_type").notNull(),
+  paramsJson: jsonb("params_json").$type<Record<string, unknown>>().notNull(),
+  inputFilename: text("input_filename").notNull(),
+  inputSha256: text("input_sha256").notNull(),
+  rowCount: integer("row_count").notNull(),
+  resultJson: jsonb("result_json").$type<Record<string, unknown>>().notNull(),
+  createdBy: text("created_by").notNull(),
+  createdAt: text("created_at").notNull(),
+});

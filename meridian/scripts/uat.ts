@@ -13,6 +13,10 @@ import { emptyImpacts } from "../src/lib/scoring";
 import { ensureSeed } from "../src/lib/seed";
 import { executeHarness } from "../src/server/harness";
 import { readFileSync } from "fs";
+import { createHash } from "crypto";
+import ExcelJS from "exceljs";
+import { analyticsRuns } from "../src/db/schema";
+import { getRunAs, inspectUploadAs, linkRunAs, listRunsAs, runAnalyticsAs } from "../src/server/analytics";
 import { join } from "path";
 import { todayIso } from "../src/lib/format";
 import { deriveEvidenceTags, severityCap } from "../src/lib/iron-rules";
@@ -211,6 +215,52 @@ async function main() {
   const bypass = sameEng && repOnly ? await capFindingSeverity("Critical", [{ documentType: repOnly.documentType, reliability: repOnly.reliability }], sameEng.id, "eng-dc") : null;
   const own = sameEng && repOnly ? await capFindingSeverity("Critical", [{ documentType: repOnly.documentType, reliability: repOnly.reliability }], sameEng.id, "eng-ap") : null;
   check("T-63", "A cleared test run cited from a different engagement cannot lift the cap; a cleared test run of the same engagement can (known negative)", Boolean(bypass) && bypass?.band === "High" && Boolean(own) && own?.band === "Critical", `cleared test ${sameEng?.id} cited from engagement eng-dc band=${bypass?.band}; same-engagement test=${sameEng?.id} band=${own?.band}`);
+
+  // ---- Analytics module (T-64..T-67)
+  const anTag = `an${Date.now().toString(36)}`;
+  const csvBytes = new TextEncoder().encode(`invoice,amount\n00123,100\n123,100\nZ9,5\n`);
+  const expectedSha = createHash("sha256").update(csvBytes).digest("hex");
+  const anRun = await runAnalyticsAs(gcaeWho, { test: "duplicates", fileA: { name: `${anTag}-inv.csv`, bytes: csvBytes }, params: { keyCols: ["invoice"] } });
+  const anRow = anRun.ok ? (await db.select().from(analyticsRuns).where(eq(analyticsRuns.id, anRun.id)))[0] : undefined;
+  const anLog = anRun.ok ? (await db.select().from(auditEvents).where(eq(auditEvents.objectId, anRun.id))).filter((e) => e.action === "Ran analytics") : [];
+  const anRes = anRow?.resultJson as { normalisedOnly?: { groupCount: number }; label?: string } | undefined;
+  check("T-64", "Uploading a CSV and running duplicates saves a run with the file's SHA-256, row count, [ANA] label, finds '00123' vs '123' only after normalising, and writes one audit_events row", anRun.ok && anRow?.inputSha256 === expectedSha && anRow.rowCount === 3 && anRow.testType === "duplicates" && anRes?.normalisedOnly?.groupCount === 1 && String(anRes.label).startsWith("[ANA] auditor analysis") && anLog.length === 1 && anLog[0].actor === gcaeWho.name, `ok=${anRun.ok} sha match=${anRow?.inputSha256 === expectedSha} rows=${anRow?.rowCount} normalisedOnly=${anRes?.normalisedOnly?.groupCount} audit rows=${anLog.length}`);
+
+  const restrictedId = `eng-${anTag}`;
+  await db.insert(engagements).values({ id: restrictedId, code: `UAT-${anTag}`, title: "UAT restricted analytics", entityId: "none", period: "UAT", objective: "UAT", scope: "UAT", status: "Fieldwork", stage: 3, qaStatus: "pending", audience: "UAT", businessContext: "UAT", leadId: "p-gcae", startDate: todayIso(), restricted: true });
+  const secretName = `${anTag}-restricted-payroll.csv`;
+  const rRun = await runAnalyticsAs(gcaeWho, { engagementId: restrictedId, test: "duplicates", fileA: { name: secretName, bytes: csvBytes }, params: { keyCols: ["invoice"] } });
+  const audList = await listRunsAs(audWho);
+  const audGet = rRun.ok ? await getRunAs(audWho, rRun.id) : "no-run";
+  const audRun = await runAnalyticsAs(audWho, { engagementId: restrictedId, test: "profile", fileA: { name: `${anTag}-x.csv`, bytes: csvBytes }, params: {} });
+  const audLink = anRun.ok ? await linkRunAs(audWho, anRun.id, restrictedId) : null;
+  const gcaeGet = rRun.ok ? await getRunAs(gcaeWho, rRun.id) : null;
+  const leaked = JSON.stringify(audList).includes(secretName) || (rRun.ok && JSON.stringify(audList).includes(rRun.id));
+  check("T-65", "A person without a grant cannot list, read, run against or link to a restricted-engagement analytics run (looks like not found); the GCAE can read it (known negative and positive)", rRun.ok && !leaked && audGet === null && !audRun.ok && audRun.error === "Not found." && Boolean(audLink && !audLink.ok) && Boolean(gcaeGet), `gcae run ok=${rRun.ok} leaked in auditor list=${leaked} auditor get=${audGet === null ? "null" : "VISIBLE"} auditor run=${audRun.ok ? "ALLOWED" : audRun.error} auditor link=${audLink && !audLink.ok ? audLink.error : "ALLOWED"} gcae read=${Boolean(gcaeGet)}`);
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Data");
+  ws.addRow(["Ref", "Amount"]);
+  ws.addRow(["A1", { formula: "1+1", result: 2 }]);
+  ws.addRow(["A2", { error: "#REF!" }]);
+  ws.addRow(["A3", 40]);
+  const xlsxBytes = new Uint8Array(await wb.xlsx.writeBuffer());
+  const xInspect = await inspectUploadAs(gcaeWho, { name: "t.xlsx", bytes: xlsxBytes });
+  const xRun = await runAnalyticsAs(gcaeWho, { test: "profile", fileA: { name: `${anTag}-t.xlsx`, bytes: xlsxBytes }, params: {} });
+  const xRes = xRun.ok ? (xRun.run.result as { totalErrorStrings: number; columns: { name: string; sum: number | null }[] }) : null;
+  const big = await runAnalyticsAs(gcaeWho, { test: "profile", fileA: { name: "big.csv", bytes: new Uint8Array(20 * 1024 * 1024 + 1) }, params: {} });
+  const owner = await runAnalyticsAs({ id: "p-own1", name: "Farid Abdullah", authority: "owner" }, { test: "profile", fileA: { name: "o.csv", bytes: csvBytes }, params: {} });
+  check("T-66", "XLSX is read data-only (cached formula result, literal #REF! kept), a file over 20 MB is refused, and an owner-role user cannot run analytics", xInspect.ok && xInspect.headers.join() === "ref,amount" && Boolean(xRes) && xRes?.totalErrorStrings === 1 && xRes?.columns.find((c) => c.name === "amount")?.sum === 42 && !big.ok && big.error.includes("20 MB") && !owner.ok, `xlsx errors=${xRes?.totalErrorStrings} amount sum=${xRes?.columns.find((c) => c.name === "amount")?.sum} big=${big.ok ? "ACCEPTED" : big.error} owner=${owner.ok ? "ALLOWED" : owner.error}`);
+
+  const beforeLink = anRow ? JSON.stringify([anRow.paramsJson, anRow.inputSha256, anRow.resultJson, anRow.rowCount]) : "";
+  const unlinked = await runAnalyticsAs(gcaeWho, { test: "profile", fileA: { name: `${anTag}-link.csv`, bytes: csvBytes }, params: {} });
+  const link1 = unlinked.ok ? await linkRunAs(gcaeWho, unlinked.id, "eng-ap") : null;
+  const link2 = unlinked.ok ? await linkRunAs(gcaeWho, unlinked.id, "eng-dc") : null;
+  const afterRow = unlinked.ok ? (await db.select().from(analyticsRuns).where(eq(analyticsRuns.id, unlinked.id)))[0] : undefined;
+  const linkLog = unlinked.ok ? (await db.select().from(auditEvents).where(eq(auditEvents.objectId, unlinked.id))).filter((e) => e.action === "Linked analytics run") : [];
+  check("T-67", "An unlinked run can be linked to an engagement once, with an audit row; a second link is refused and the saved result, hash and parameters never change", unlinked.ok && Boolean(link1?.ok) && Boolean(link2 && !link2.ok) && afterRow?.engagementId === "eng-ap" && linkLog.length === 1 && linkLog[0].engagementId === "eng-ap" && beforeLink.length > 0 && afterRow?.inputSha256 === expectedSha, `link1=${link1?.ok} link2=${link2 && !link2.ok ? link2.error : "ALLOWED"} engagement=${afterRow?.engagementId} audit rows=${linkLog.length}`);
+  await db.delete(analyticsRuns).where(like(analyticsRuns.inputFilename, `${anTag}%`));
+  await db.delete(engagements).where(eq(engagements.id, restrictedId));
 
   // Cleanup of UAT rows (audit_events stay: the log is append-only).
   await db.delete(agentRuns).where(like(agentRuns.id, `ar-${tag}%`));
