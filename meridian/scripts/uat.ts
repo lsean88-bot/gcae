@@ -318,9 +318,13 @@ async function main() {
   const secs = (apRow?.contentJson as { report?: { sections?: { number: number }[] } })?.report?.sections ?? [];
   check("T-70", "Generating a version for a seeded engagement stores a new Draft with 13 sections numbered 1 to 13", vAp.ok && apRow.versionNo === vApNo + 1 && apRow.status === "Draft" && secs.length === 13 && secs.every((s, i) => s.number === i + 1), `ok=${vAp.ok} version=${apRow?.versionNo} sections=${secs.length}`);
 
-  const blockedRes = vAp.ok ? await setReportStatus(gcaeWho, vAp.id, "Final") : null;
-  const afterBlocked = (await db.select().from(reportVersions).where(eq(reportVersions.id, vAp.ok ? vAp.id : "")))[0];
-  const blockingNow = apRow?.gateJson.blocking.length ?? 0;
+  // Dedicated engagement with no tests, findings or background: its report has gaps, so blocking is non-empty by construction.
+  const e77 = `eng-g${Date.now().toString(36)}`;
+  await db.insert(engagements).values({ id: e77, code: `UAT-${e77}`, title: `UAT gate ${e77}`, entityId: "none", period: "UAT", objective: "", scope: "", status: "Fieldwork", stage: 3, qaStatus: "pending", audience: "UAT", businessContext: "", leadId: "p-gcae", startDate: todayIso(), restricted: false });
+  const v71 = await createReportVersion(gcaeWho, e77);
+  const blockedRes = v71.ok ? await setReportStatus(gcaeWho, v71.id, "Final") : null;
+  const afterBlocked = (await db.select().from(reportVersions).where(eq(reportVersions.id, v71.ok ? v71.id : "")))[0];
+  const blockingNow = afterBlocked?.gateJson.blocking.length ?? 0;
   check("T-71", "Final is refused by the server while gate_json.blocking is non-empty, and the status stays Draft (known positive: blocking is non-empty)", blockingNow > 0 && blockedRes?.ok === false && afterBlocked.status === "Draft" && afterBlocked.signedOffBy === null, `blocking=${blockingNow} final ok=${blockedRes?.ok} status=${afterBlocked?.status}`);
 
   const gRes = vAp.ok ? await getDocx(vAp.id, gTok) : null;
@@ -361,7 +365,7 @@ async function main() {
 
   // T-77: the database itself refuses Final on a version with blocking items (direct SQL, no app code in the path).
   const dbTry = async (sql: string, args: unknown[]) => { try { await pool.query(sql, args); return "ALLOWED"; } catch (e) { return e instanceof Error ? e.message : String(e); } };
-  const v77 = await createReportVersion(gcaeWho, "eng-ap");
+  const v77 = await createReportVersion(gcaeWho, e77);
   const stillDraft = v77.ok ? (await pool.query("SELECT status, jsonb_array_length(gate_json->'blocking') AS n FROM report_versions WHERE id = $1", [v77.id])).rows[0] : undefined;
   const directFinal = v77.ok && Number(stillDraft?.n) > 0 ? await dbTry("UPDATE report_versions SET status = 'Final', signed_off_by = 'UAT', signed_off_at = $2 WHERE id = $1", [v77.id, new Date().toISOString()]) : "NO VERSION OR NO BLOCKING";
   const afterDirect = v77.ok ? (await pool.query("SELECT status FROM report_versions WHERE id = $1", [v77.id])).rows[0] : undefined;
@@ -370,6 +374,7 @@ async function main() {
   await db.delete(sessions).where(eq(sessions.tokenHash, hashToken(gTok)));
   await db.delete(sessions).where(eq(sessions.tokenHash, hashToken(aTok)));
   await db.delete(engagements).where(eq(engagements.id, rsEng));
+  await db.delete(engagements).where(eq(engagements.id, e77)).catch(() => undefined);
 
   // Cleanup of UAT rows (audit_events stay: the log is append-only).
   await db.delete(agentRuns).where(like(agentRuns.id, `ar-${tag}%`));
