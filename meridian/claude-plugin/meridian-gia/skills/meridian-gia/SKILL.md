@@ -32,7 +32,7 @@ Use it for audit assignment understanding, evidence registration checks, attribu
 
 ## Using the Meridian MCP tools (Claude Desktop or Claude Code)
 
-When the `meridian` MCP server is connected (see `docs/CLAUDE-CONNECTOR.md`), prefer its tools to guessing from memory. The server uses the user's own personal access token, so you act with that person's authority, and every write is logged as "<person> via Claude token <name>".
+When the `meridian` MCP server is connected (this plugin starts it; setup is in `docs/LAPTOP-QUICKSTART.md`), prefer its tools to guessing from memory. Meridian runs on the owner's own laptop at http://127.0.0.1:3000 and the server uses the owner's personal access token from the `MERIDIAN_TOKEN` environment variable, so you act with that person's authority, and every write is logged as "<person> via Claude token <name>". Never ask the user to paste the token into the chat and never write it into a file.
 
 Read tools: `list_engagements`, `get_engagement` (materiality, stage, gate blockers), `list_findings`, `get_finding`, `list_actions`, `list_evidence` (metadata, hash, reliability), `get_evidence` (one record; raw text only with `includeBody`), `list_risks`, `list_test_runs`, `get_briefing`, `list_lessons`.
 
@@ -43,7 +43,12 @@ Draft tools: `draft_finding`, `draft_report_text`, `propose_lesson`. These are t
 - `propose_lesson` files a proposed lesson. A manager or the GCAE decides.
 - Meridian refuses, on the server, a draft that contains a figure not in the source file, or says fraud is proven. If refused, remove the figure or cite the evidence; do not rephrase the figure to get past the check.
 - There is no tool to issue a report, approve materiality or a rating, change a threshold, close an action, clear QA, approve a test, delete or overwrite evidence, conclude on fraud, or waive an iron rule. If asked, say the GCAE or the named role does that in the Meridian app. Do not look for a workaround.
-- Tool errors (401 token revoked or expired, 429 rate limit of 120 a minute, "WARP not connected") are reported to the user as they are. Do not invent data when a call fails.
+- Tool errors (401 token revoked or expired: the user creates a new token with `npm run token:create`; 403 no authority or read-only token; 429 rate limit of 120 a minute; "Could not reach Meridian": the app is not running, the user starts it with the laptop start script) are reported to the user as they are. Do not invent data when a call fails.
+
+## Agents and commands in this plugin
+
+- Agents: `meridian-fieldworker` (reads, analyses, files drafts), `meridian-qa-reviewer` (read only, re-performs calculations), `meridian-briefing-writer` (drafts Board and Audit Committee text from `get_briefing`). None of them issues, approves, closes, clears QA, concludes fraud or invents figures.
+- Commands: `/meridian-gia:meridian-status` (engagements, open findings, overdue actions) and `/meridian-gia:meridian-draft` (guided draft finding).
 
 ## Specialist order
 
@@ -86,6 +91,7 @@ Root-cause classes: Design gap, Implementation gap, Operating gap, Monitoring ga
 - The pilot pattern is MKAPL die casting inventory, then other areas.
 - Optro public material may inform the idea of reviewer-first agents. It does not authorise copying a vendor system.
 - GCAE retains judgment. The harness is a controller, not an auditor.
-- UAT on the delivered build expected 22 passed and 0 failed.
-- Claude Desktop and Claude Code can use the local MCP connector with the person’s existing Claude subscription and a Meridian token; no API key is needed for that route. Claude.ai on the web cannot reach the private server.
+- UAT on this build: 55 passed and 0 failed (T-01 to T-55), measured on the laptop setup. UAT does not call a live model.
+- The seeded engagements, people and figures are demonstration data, not a live population. Say so when you report on them.
+- Claude Code (with this plugin) and Claude Desktop can use the local MCP connector with the person’s existing Claude subscription and a Meridian token; no API key is needed for that route. Claude.ai on the web cannot reach a server on the laptop.
 - Connect Claude with an API key from console.anthropic.com, or ChatGPT with an API key from platform.openai.com. A chat subscription is not a key.

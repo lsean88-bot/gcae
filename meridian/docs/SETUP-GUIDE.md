@@ -25,7 +25,7 @@ If the lists are empty, IT must check that PostgreSQL is running and that the fi
 3. Click **Run UAT again**.
 4. Wait until it says how many checks passed.
 
-The expected result on the delivered build is 32 passed and 0 failed. If any check fails, do not start a live audit on that copy. Send the failed row to the person who maintains the app.
+The expected result on the delivered build is 55 passed and 0 failed. If any check fails, do not start a live audit on that copy. Send the failed row to the person who maintains the app.
 
 ## 4. Connect a model, if you want one
 

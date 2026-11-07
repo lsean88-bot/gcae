@@ -104,4 +104,4 @@ If a draft contains a figure that is not in the source, the app refuses to save 
 2. The pill should say the model is connected.
 3. Click **Run harness** on a practice engagement first.
 4. Read the specialist notes.
-5. Open **UAT evidence** and run it again. The 32 checks do not require a model. They prove the calculations and the gates.
+5. Open **UAT evidence** and run it again. The 55 checks do not require a model. They prove the calculations and the gates.

@@ -7,6 +7,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "token:create": "tsx scripts/create-token.ts",
     "setup:passwords": "tsx scripts/setup-passwords.ts",
     "db:harden": "tsx scripts/db-harden.ts",
     "db:push": "drizzle-kit push --force",

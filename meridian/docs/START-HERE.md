@@ -23,7 +23,7 @@ The zip `meridian-gia-kit.zip` contains the same guides, the skill plugin, and t
 2. Click **Connect AI**.
 3. Paste a Claude API key or a ChatGPT API key and click Connect.
 4. Open **Agent harness** and click **Run harness**.
-5. Open **UAT evidence** to see the 32 checks.
+5. Open **UAT evidence** to see the 55 checks.
 
 A Claude.ai chat plan or ChatGPT Plus login is not an API key.
 

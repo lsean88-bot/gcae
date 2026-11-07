@@ -116,7 +116,7 @@ The first page load calls `ensureSeed()`. If `settings.seeded` exists, the demon
 
 ## 6. UAT memory
 
-Delivered UAT result: 32 passed, 0 failed (T-01 to T-22 calculation and gates in `src/server/uat.ts`, T-23 to T-32 security in `src/server/security-checks.ts`). The cases are shown on `/uat`.
+Measured UAT result (2026-11-07, laptop setup on PostgreSQL 16): 55 passed, 0 failed, T-01 to T-55. T-01 to T-22 are calculation and gates in `src/server/uat.ts`; T-23 to T-45 are security, Claude connector and restricted-engagement checks in `src/server/security-checks.ts`; T-46 to T-55 are the strategic modules in `src/server/strategic-checks.ts`. The cases are shown on `/uat`.
 
 They prove procedure results, scoring, gate refusal, figure detection, briefing generation, stored finding scores, and that the harness does not issue or approve materiality.
 
@@ -160,7 +160,8 @@ Authority comes only from the server-side session. Sign-in is role plus password
 - No enterprise single sign-on in this release.
 - Connect AI stores the key in PostgreSQL. Use it only on a private server.
 - Default model ids may need `ANTHROPIC_MODEL` or `OPENAI_MODEL` if the account rejects them.
-- `drizzle.config.json` contains a database URL that must be edited for a new server. `.env` alone is not enough for `drizzle-kit push` until that file is changed.
+- `drizzle.config.ts` reads `DATABASE_URL` from the environment or `.env` and has no built-in URL. It stops with a clear message if the variable is missing.
+- Laptop mode (decision of the owner, single user): Meridian runs only on the GCAE's own laptop, bound to 127.0.0.1:3000. Setup is `laptop/setup.ps1` (Windows) or `laptop/setup.sh` (Linux, WSL, Mac). Only `p-gcae` is issued a password; the other seeded people have none and cannot sign in. The Claude Code plugin is in `claude-plugin/meridian-gia/` (skill, bundled MCP server, three agents, two commands); rebuild the bundle with `cd mcp && npm run bundle:plugin`. Step by step: `docs/LAPTOP-QUICKSTART.md`.
 - Running UAT or the harness on `eng-p2p` may add another proposed kaizen lesson. That does not issue a report.
 - This handover does not include the contents of any earlier vendor or plugin zip. Do not invent those file lists.
 

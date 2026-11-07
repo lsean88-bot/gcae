@@ -1,0 +1,14 @@
+{
+  "name": "gcae-tools",
+  "owner": { "name": "Group Internal Audit" },
+  "metadata": { "description": "Claude Code plugins for the Group CAE second brain" },
+  "plugins": [
+    {
+      "name": "meridian-gia",
+      "source": "./meridian/claude-plugin/meridian-gia",
+      "description": "Meridian assurance workbench on your own laptop: audit skill, local MCP connector (read and draft only), three agents, two commands.",
+      "version": "1.0.0",
+      "category": "audit"
+    }
+  ]
+}

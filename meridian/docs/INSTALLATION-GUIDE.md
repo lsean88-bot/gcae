@@ -76,7 +76,7 @@ Example checks after install:
 
 - `http://SERVER:3000/api/health` returns `{"ok":true}` when the database is reachable.
 - The home page shows Meridian, not an error.
-- **UAT evidence** can be opened by Amira Hassan’s role. Click **Run UAT again**. You want 32 of 32.
+- **UAT evidence** can be opened by Amira Hassan’s role. Click **Run UAT again**. You want 55 of 55.
 
 ## Step 6. Hand the site to the GCAE
 
@@ -105,7 +105,7 @@ Restart with `npm run start` after any `.env` change.
 - The site is private.
 - The database is private and backed up.
 - `.env` is not in email or in the zip you forward.
-- UAT evidence shows 32 passed and 0 failed.
+- UAT evidence shows 55 passed and 0 failed.
 - Connect AI shows Not connected until the GCAE pastes a key, or Connected if IT set the environment key.
 
 ## If installation fails
