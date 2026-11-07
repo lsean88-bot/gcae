@@ -101,7 +101,19 @@ $null = Psql-Url $dbUrl 'select 1'
 if ($LASTEXITCODE -ne 0) { Stop-Setup "Cannot connect to the database named in .env. Check that the PostgreSQL service is running. If you changed the database password, delete .env and run this script again." }
 Write-Host ".env ok, database reachable"
 
-Step "4. Installing the app (npm ci)";            Run-Native "npm ci" { npm.cmd ci }
+Step "4. Installing the app (npm ci)"
+# A running app or editor locks next-swc*.node and makes npm ci fail with EPERM. Stop Node first.
+$nodeProcs = Get-Process node -ErrorAction SilentlyContinue
+if ($nodeProcs) {
+  Write-Host "Stopping $($nodeProcs.Count) running Node process(es) so npm ci can replace locked files."
+  $nodeProcs | Stop-Process -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Seconds 2
+}
+if (Test-Path "node_modules") {
+  try { Remove-Item -Recurse -Force "node_modules" -ErrorAction Stop }
+  catch { Stop-Setup "Could not remove node_modules (a file is locked). Close VS Code and any app window, restart Windows if needed, then run this script again. If it repeats, Windows Defender may be scanning the folder: Add-MpPreference -ExclusionPath '$((Get-Location).Path)' (as Administrator)." }
+}
+Run-Native "npm ci" { npm.cmd ci }
 Step "5. Creating tables (db:push)";              Run-Native "db:push" { npm.cmd run db:push }
 Step "6. Hardening the audit log (db:harden)";    Run-Native "db:harden" { npm.cmd run db:harden }
 Step "7. Building the app";                       Run-Native "npm run build" { npm.cmd run build }

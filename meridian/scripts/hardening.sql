@@ -39,3 +39,41 @@ BEGIN
       FOR EACH ROW EXECUTE FUNCTION ac_packs_block_released();
   END IF;
 END $$;
+
+-- Report versions: snapshots are immutable. No DELETE or TRUNCATE. Only status, signed_off_by and signed_off_at may change,
+-- and a Final version is frozen entirely.
+CREATE OR REPLACE FUNCTION report_versions_guard() RETURNS trigger AS $$
+BEGIN
+  IF TG_OP = 'DELETE' OR TG_OP = 'TRUNCATE' THEN
+    RAISE EXCEPTION 'report_versions: % is not permitted', TG_OP USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF OLD.status = 'Final' THEN
+    RAISE EXCEPTION 'report_versions: a Final version is frozen' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.engagement_id IS DISTINCT FROM OLD.engagement_id
+     OR NEW.version_no IS DISTINCT FROM OLD.version_no
+     OR NEW.content_json IS DISTINCT FROM OLD.content_json
+     OR NEW.gate_json IS DISTINCT FROM OLD.gate_json
+     OR NEW.sha256 IS DISTINCT FROM OLD.sha256
+     OR NEW.created_by IS DISTINCT FROM OLD.created_by
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'report_versions: only status, signed_off_by and signed_off_at may change' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DO $$
+BEGIN
+  IF to_regclass('report_versions') IS NOT NULL THEN
+    DROP TRIGGER IF EXISTS report_versions_immutable ON report_versions;
+    CREATE TRIGGER report_versions_immutable
+      BEFORE UPDATE OR DELETE ON report_versions
+      FOR EACH ROW EXECUTE FUNCTION report_versions_guard();
+    DROP TRIGGER IF EXISTS report_versions_no_truncate ON report_versions;
+    CREATE TRIGGER report_versions_no_truncate
+      BEFORE TRUNCATE ON report_versions
+      FOR EACH STATEMENT EXECUTE FUNCTION report_versions_guard();
+  END IF;
+END $$;

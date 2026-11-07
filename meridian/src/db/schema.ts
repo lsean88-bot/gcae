@@ -477,3 +477,22 @@ export const analyticsRuns = pgTable("analytics_runs", {
   createdBy: text("created_by").notNull(),
   createdAt: text("created_at").notNull(),
 });
+
+/** Stored 13-section report snapshots. Append-only: no DELETE; only status and sign-off columns may change (see scripts/hardening.sql). */
+export const reportVersions = pgTable(
+  "report_versions",
+  {
+    id: text("id").primaryKey(),
+    engagementId: text("engagement_id").notNull(),
+    versionNo: integer("version_no").notNull(),
+    status: text("status").notNull(), // Draft | Reviewed | Final
+    contentJson: jsonb("content_json").$type<Record<string, unknown>>().notNull(),
+    gateJson: jsonb("gate_json").$type<{ blocking: string[]; warnings: string[] }>().notNull(),
+    sha256: text("sha256").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: text("created_at").notNull(),
+    signedOffBy: text("signed_off_by"),
+    signedOffAt: text("signed_off_at"),
+  },
+  (t) => [unique("report_versions_engagement_version").on(t.engagementId, t.versionNo)],
+);
